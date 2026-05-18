@@ -1,13 +1,14 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Stack, router, usePathname } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
+import { SidebarProvider, useSidebar } from '@/context/SidebarContext';
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { colors } from '@/theme/colors';
 
-export default function AppLayout() {
+function AppLayoutInner() {
   const { user, isLoading } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isOpen, close } = useSidebar();
   const pathname = usePathname();
 
   useEffect(() => {
@@ -15,10 +16,6 @@ export default function AppLayout() {
       router.replace('/(auth)/welcome');
     }
   }, [user, isLoading]);
-
-  const handleCloseSidebar = useCallback(() => {
-    setSidebarOpen(false);
-  }, []);
 
   if (!user) return null;
 
@@ -28,23 +25,23 @@ export default function AppLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
-          animation: 'fade',
+          animation: 'slide_from_right',
         }}
-      >
-        <Stack.Screen name="home" />
-        <Stack.Screen name="wardrobe" />
-        <Stack.Screen name="outfits" />
-        <Stack.Screen name="trips" />
-        <Stack.Screen name="shopping" />
-        <Stack.Screen name="scan" />
-        <Stack.Screen name="profile" />
-      </Stack>
+      />
       <Sidebar
-        isOpen={sidebarOpen}
-        onClose={handleCloseSidebar}
+        isOpen={isOpen}
+        onClose={close}
         activeRoute={pathname}
       />
     </View>
+  );
+}
+
+export default function AppLayout() {
+  return (
+    <SidebarProvider>
+      <AppLayoutInner />
+    </SidebarProvider>
   );
 }
 

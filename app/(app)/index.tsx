@@ -26,6 +26,7 @@ import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
+import { useSidebar } from '@/context/SidebarContext';
 
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
 
@@ -121,6 +122,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const members = useHouseholdStore((s) => s.members);
+  const { open: openSidebar } = useSidebar();
   const items = useWardrobeStore((s) => s.items);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -159,7 +161,10 @@ export default function HomeScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
+          <TouchableOpacity onPress={openSidebar} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="menu" size={26} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: spacing.md }}>
             <Text style={styles.greeting}>
               {t(greetingKey)}{firstName ? `, ${firstName}` : ''}
             </Text>
