@@ -8,6 +8,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
+  "engines": {
+    "node": ">=20.19.4",
+    "npm": ">=10.0.0"
+  },
   "dependencies": {
     "expo": "~54.0.34",
     "expo-router": "~6.0.23",
