@@ -13,6 +13,8 @@ interface AuthState {
   token: string | null;
   isDemo: boolean;
   isLoading: boolean;
+  bodyPhotoUri: string | null;
+  setBodyPhoto: (uri: string | null) => void;
   setAuth: (user: User, token: string) => Promise<void>;
   loginAsDemo: () => void;
   logout: () => Promise<void>;
@@ -27,6 +29,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: null,
   isDemo: false,
   isLoading: true,
+  bodyPhotoUri: null,
+
+  setBodyPhoto: (uri) => set({ bodyPhotoUri: uri }),
 
   setAuth: async (user: User, token: string) => {
     await SecureStore.setItemAsync(TOKEN_KEY, token);

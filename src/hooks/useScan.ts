@@ -1,7 +1,53 @@
 import { useState, useCallback, useRef } from 'react';
 import { scanService, ScanJob, ScannedItem } from '@/services/scanService';
+import { useAuthStore } from '@/store/authStore';
+import { useWardrobeStore } from '@/store/wardrobeStore';
+import { ClothingItem } from '@/store/wardrobeStore';
 
 export type ScanState = 'INTRO' | 'RECORDING' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
+
+const DEMO_SCAN_RESULTS: ScannedItem[] = [
+  {
+    id: 'scan-demo-1',
+    jobId: 'demo-job',
+    imageUrl: 'https://images.unsplash.com/photo-1625910513952-b71a4a9f9f9b?w=400&q=80',
+    category: 'tops',
+    subcategory: 'Polo shirt',
+    brand: 'Lacoste',
+    colors: ['#2E8B57'],
+    confidence: 0.94,
+  },
+  {
+    id: 'scan-demo-2',
+    jobId: 'demo-job',
+    imageUrl: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=400&q=80',
+    category: 'bottoms',
+    subcategory: 'Shorts',
+    brand: 'H&M',
+    colors: ['#C4A882'],
+    confidence: 0.88,
+  },
+  {
+    id: 'scan-demo-3',
+    jobId: 'demo-job',
+    imageUrl: 'https://images.unsplash.com/photo-1603808033192-082d6919d3e1?w=400&q=80',
+    category: 'shoes',
+    subcategory: 'Loafers',
+    brand: 'Clarks',
+    colors: ['#8B4513'],
+    confidence: 0.91,
+  },
+  {
+    id: 'scan-demo-4',
+    jobId: 'demo-job',
+    imageUrl: 'https://images.unsplash.com/photo-1601924994987-69e26d50dc26?w=400&q=80',
+    category: 'accessories',
+    subcategory: 'Zonnebril',
+    brand: 'Ray-Ban',
+    colors: ['#000000'],
+    confidence: 0.79,
+  },
+];
 
 interface UseScanReturn {
   scanState: ScanState;
@@ -21,6 +67,9 @@ interface UseScanReturn {
 }
 
 export function useScan(): UseScanReturn {
+  const isDemo = useAuthStore((s) => s.isDemo);
+  const addItem = useWardrobeStore((s) => s.addItem);
+
   const [scanState, setScanState] = useState<ScanState>('INTRO');
   const [scanJob, setScanJob] = useState<ScanJob | null>(null);
   const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
@@ -36,35 +85,6 @@ export function useScan(): UseScanReturn {
     }
   }, []);
 
-  const pollJobStatus = useCallback(
-    (jobId: string) => {
-      pollingRef.current = setInterval(async () => {
-        try {
-          const job = await scanService.getScanStatus(jobId);
-          setScanJob(job);
-
-          if (job.status === 'completed') {
-            stopPolling();
-            setScannedItems(job.results ?? []);
-            const allIds = new Set((job.results ?? []).map((i) => i.id));
-            setConfirmedIds(allIds);
-            setRejectedIds(new Set());
-            setScanState('REVIEW');
-          } else if (job.status === 'failed') {
-            stopPolling();
-            setError('Processing failed. Please try again.');
-            setScanState('INTRO');
-          }
-        } catch {
-          stopPolling();
-          setError('Processing failed. Please try again.');
-          setScanState('INTRO');
-        }
-      }, 3000);
-    },
-    [stopPolling],
-  );
-
   const startRecording = useCallback(() => {
     setError(null);
     setScanState('RECORDING');
@@ -74,35 +94,59 @@ export function useScan(): UseScanReturn {
     async (photos: string[]) => {
       setScanState('PROCESSING');
       setError(null);
+
+      if (isDemo) {
+        // Simulate 2.5s AI processing, then show review
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        setScannedItems(DEMO_SCAN_RESULTS);
+        setConfirmedIds(new Set(DEMO_SCAN_RESULTS.map((i) => i.id)));
+        setRejectedIds(new Set());
+        setScanState('REVIEW');
+        return;
+      }
+
       try {
         const { jobId } = await scanService.startScan(photos);
         const initialJob = await scanService.getScanStatus(jobId);
         setScanJob(initialJob);
-        pollJobStatus(jobId);
+
+        pollingRef.current = setInterval(async () => {
+          try {
+            const job = await scanService.getScanStatus(jobId);
+            setScanJob(job);
+            if (job.status === 'completed') {
+              stopPolling();
+              setScannedItems(job.results ?? []);
+              setConfirmedIds(new Set((job.results ?? []).map((i) => i.id)));
+              setRejectedIds(new Set());
+              setScanState('REVIEW');
+            } else if (job.status === 'failed') {
+              stopPolling();
+              setError('Verwerking mislukt. Probeer opnieuw.');
+              setScanState('INTRO');
+            }
+          } catch {
+            stopPolling();
+            setError('Verwerking mislukt. Probeer opnieuw.');
+            setScanState('INTRO');
+          }
+        }, 3000);
       } catch {
-        setError('Upload failed. Please try again.');
+        setError('Upload mislukt. Probeer opnieuw.');
         setScanState('INTRO');
       }
     },
-    [pollJobStatus],
+    [isDemo, stopPolling],
   );
 
   const confirmItem = useCallback((id: string) => {
     setConfirmedIds((prev) => new Set(prev).add(id));
-    setRejectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    setRejectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   }, []);
 
   const rejectItem = useCallback((id: string) => {
     setRejectedIds((prev) => new Set(prev).add(id));
-    setConfirmedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+    setConfirmedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   }, []);
 
   const confirmAll = useCallback(() => {
@@ -111,6 +155,29 @@ export function useScan(): UseScanReturn {
   }, [scannedItems]);
 
   const submitReview = useCallback(async () => {
+    if (isDemo) {
+      const now = new Date().toISOString();
+      scannedItems
+        .filter((item) => confirmedIds.has(item.id))
+        .forEach((item) => {
+          const newItem: ClothingItem = {
+            id: `scanned-${Date.now()}-${item.id}`,
+            userId: 'demo-user',
+            imageUrl: item.imageUrl,
+            category: item.category,
+            subcategory: item.subcategory,
+            brand: item.brand,
+            colors: item.colors,
+            timesWorn: 0,
+            createdAt: now,
+            updatedAt: now,
+          };
+          addItem(newItem);
+        });
+      setScanState('COMPLETE');
+      return;
+    }
+
     if (!scanJob) return;
     try {
       await scanService.confirmScanResults(
@@ -120,9 +187,9 @@ export function useScan(): UseScanReturn {
       );
       setScanState('COMPLETE');
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('Er ging iets mis. Probeer opnieuw.');
     }
-  }, [scanJob, confirmedIds, rejectedIds]);
+  }, [isDemo, scanJob, confirmedIds, rejectedIds, scannedItems, addItem]);
 
   const reset = useCallback(() => {
     stopPolling();

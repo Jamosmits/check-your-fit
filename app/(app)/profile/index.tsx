@@ -1,16 +1,19 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Dimensions,
   Platform,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/theme/colors';
 import { fontSizes, fontWeights } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
@@ -40,6 +43,76 @@ function StatBox({
       <Text style={[styles.statValue, accent && styles.statValueAccent]}>{value}</Text>
       <Text style={[styles.statLabel, accent && styles.statLabelAccent]}>{label}</Text>
     </View>
+  );
+}
+
+function BodyPhotoSection() {
+  const bodyPhotoUri = useAuthStore((s) => s.bodyPhotoUri);
+  const setBodyPhoto = useAuthStore((s) => s.setBodyPhoto);
+
+  const pickBodyPhoto = useCallback(async (source: 'camera' | 'gallery') => {
+    let result: ImagePicker.ImagePickerResult;
+    if (source === 'camera') {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('Cameratoegang vereist'); return; }
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85, allowsEditing: true, aspect: [2, 3],
+      });
+    } else {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85, allowsEditing: true, aspect: [2, 3],
+      });
+    }
+    if (!result.canceled && result.assets[0]) {
+      setBodyPhoto(result.assets[0].uri);
+    }
+  }, [setBodyPhoto]);
+
+  const handlePress = useCallback(() => {
+    Alert.alert(
+      bodyPhotoUri ? 'Lichaamsfoto wijzigen' : 'Lichaamsfoto toevoegen',
+      'Gebruikt voor virtual try-on. Sta rechtop in neutrale kleding.',
+      [
+        { text: 'Camera',  onPress: () => pickBodyPhoto('camera')  },
+        { text: 'Galerij', onPress: () => pickBodyPhoto('gallery') },
+        ...(bodyPhotoUri ? [{ text: 'Verwijder foto', style: 'destructive' as const, onPress: () => setBodyPhoto(null) }] : []),
+        { text: 'Annuleer', style: 'cancel' },
+      ],
+    );
+  }, [bodyPhotoUri, pickBodyPhoto, setBodyPhoto]);
+
+  return (
+    <Card style={bodyStyles.card}>
+      <View style={bodyStyles.header}>
+        <Ionicons name="body-outline" size={20} color={colors.accent} />
+        <View style={bodyStyles.headerText}>
+          <Text style={bodyStyles.title}>Lichaamsfoto</Text>
+          <Text style={bodyStyles.subtitle}>Voor virtual try-on</Text>
+        </View>
+        <TouchableOpacity onPress={handlePress} style={bodyStyles.addBtn} activeOpacity={0.8}>
+          <Ionicons name={bodyPhotoUri ? 'create-outline' : 'add'} size={18} color={colors.white} />
+          <Text style={bodyStyles.addBtnText}>{bodyPhotoUri ? 'Wijzig' : 'Voeg toe'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {bodyPhotoUri ? (
+        <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={bodyStyles.photoWrap}>
+          <Image source={{ uri: bodyPhotoUri }} style={bodyStyles.photo} resizeMode="cover" />
+          <View style={bodyStyles.photoOverlay}>
+            <Ionicons name="checkmark-circle" size={28} color="#4CD964" />
+            <Text style={bodyStyles.photoOverlayText}>Foto opgeslagen</Text>
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity onPress={handlePress} style={bodyStyles.placeholder} activeOpacity={0.8}>
+          <Ionicons name="person-outline" size={48} color={colors.textMuted} />
+          <Text style={bodyStyles.placeholderText}>Tik om een foto toe te voegen</Text>
+          <Text style={bodyStyles.placeholderHint}>Sta rechtop · neutrale achtergrond · goede belichting</Text>
+        </TouchableOpacity>
+      )}
+    </Card>
   );
 }
 
@@ -88,7 +161,7 @@ export default function ProfileScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Avatar
-            uri={user?.avatar_url}
+            imageUrl={user?.avatarUrl}
             name={user?.name}
             size={64}
           />
@@ -194,6 +267,9 @@ export default function ProfileScreen() {
           </ScrollView>
         </>
       )}
+
+      {/* Body scan */}
+      <BodyPhotoSection />
 
       {/* Settings shortcut */}
       <Card style={styles.settingsCard}>
@@ -326,4 +402,37 @@ const styles = StyleSheet.create({
     fontWeight: fontWeights.medium,
     color: colors.textPrimary,
   },
+});
+
+const bodyStyles = StyleSheet.create({
+  card:  { gap: spacing.md },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerText: { flex: 1 },
+  title:    { fontSize: fontSizes.base, fontWeight: fontWeights.semibold, color: colors.textPrimary },
+  subtitle: { fontSize: fontSizes.xs,   color: colors.textSecondary },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.accent, borderRadius: 8,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs + 2,
+  },
+  addBtnText: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.white },
+  photoWrap: {
+    borderRadius: 12, overflow: 'hidden',
+    height: 200, backgroundColor: colors.surfaceAlt,
+  },
+  photo: { width: '100%', height: '100%' },
+  photoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center', justifyContent: 'flex-end',
+    paddingBottom: spacing.md, gap: spacing.xs,
+  },
+  photoOverlayText: { color: colors.white, fontSize: fontSizes.sm, fontWeight: fontWeights.medium },
+  placeholder: {
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border,
+    borderRadius: 12, padding: spacing.xl,
+    alignItems: 'center', gap: spacing.sm,
+  },
+  placeholderText: { fontSize: fontSizes.base, fontWeight: fontWeights.medium, color: colors.textSecondary },
+  placeholderHint: { fontSize: fontSizes.xs, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
 });

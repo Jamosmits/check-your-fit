@@ -103,7 +103,7 @@ export function ClothingCard({ item, onPress, onDelete, onMarkWorn }: ClothingCa
         <Image
           source={{ uri: item.imageUrl }}
           style={styles.image}
-          resizeMode="cover"
+          resizeMode="contain"
         />
         {colorDot && (
           <View style={[styles.colorDot, { backgroundColor: colorDot }]} />
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: '#FFFFFF',
   },
   colorDot: {
     position: 'absolute',

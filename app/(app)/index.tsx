@@ -83,11 +83,23 @@ function WeatherCard() {
         <View style={styles.weatherInfo}>
           <Text style={styles.weatherTemp}>{Math.round(weather.temperature)}°C</Text>
           <Text style={styles.weatherCondition}>{weather.condition}</Text>
+          {weather.location ? (
+            <Text style={styles.weatherLocation}>{weather.location}</Text>
+          ) : null}
+        </View>
+        <View style={styles.weatherExtra}>
+          <Text style={styles.weatherExtraLabel}>Voelt als</Text>
+          <Text style={styles.weatherExtraValue}>{Math.round(weather.feelsLike)}°</Text>
+          <Text style={styles.weatherExtraLabel}>Vochtigheid</Text>
+          <Text style={styles.weatherExtraValue}>{weather.humidity}%</Text>
         </View>
       </View>
-      {weather.clothingRecommendation !== undefined && (
-        <Text style={styles.weatherRecommendation}>{weather.clothingRecommendation}</Text>
-      )}
+      {weather.clothingRecommendation ? (
+        <View style={styles.weatherTipRow}>
+          <Ionicons name="shirt-outline" size={14} color={colors.accent} />
+          <Text style={styles.weatherRecommendation}>{weather.clothingRecommendation}</Text>
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -352,10 +364,37 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textTransform: 'capitalize',
   },
+  weatherLocation: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  weatherExtra: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  weatherExtraLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  weatherExtraValue: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.textPrimary,
+  },
+  weatherTipRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   weatherRecommendation: {
+    flex: 1,
     fontSize: typography.fontSizes.sm,
     color: colors.textSecondary,
-    marginTop: spacing.sm,
     lineHeight: 20,
   },
   outfitCard: {
