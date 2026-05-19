@@ -1,335 +1,554 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Image,
+  FlatList,
+  ScrollView,
+  Dimensions,
   Platform,
-  Alert,
-  Share,
-  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
-import { useTranslation } from '@/i18n';
-import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
+import { useAuthStore } from '@/store/authStore';
 
-type TryOnState = 'no-photo' | 'uploading' | 'processing' | 'result' | 'error';
+const { height: SH } = Dimensions.get('window');
+const THUMB = 76;
+const CLOSET_HEIGHT = Math.round(SH * 0.41);
 
-export default function TryOnScreen() {
-  const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
+type Cat = ClothingItem['category'];
 
-  const [state, setState] = useState<TryOnState>('no-photo');
-  const [frontPhotoUri, setFrontPhotoUri] = useState<string | null>(null);
-  const [resultImageUri, setResultImageUri] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+const CATEGORIES: { key: Cat; label: string; icon: string }[] = [
+  { key: 'tops',        label: 'Tops',        icon: '👕' },
+  { key: 'bottoms',     label: 'Bottoms',     icon: '👖' },
+  { key: 'outerwear',   label: 'Jassen',      icon: '🧥' },
+  { key: 'dresses',     label: 'Jurken',      icon: '👗' },
+  { key: 'shoes',       label: 'Schoenen',    icon: '👟' },
+  { key: 'accessories', label: 'Accessoires', icon: '💍' },
+];
 
-  const handleUploadPhoto = useCallback(
-    async (view: 'front' | 'side') => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Cameratoegang vereist');
-        return;
-      }
+// Zones as percentages of the model container — calibrated for the body icon
+const ZONES: Record<Cat, { top: string; left: string; right: string; height: string; zIndex: number }> = {
+  accessories: { top: '4%',  left: '28%', right: '28%', height: '13%', zIndex: 5 },
+  outerwear:   { top: '14%', left: '6%',  right: '6%',  height: '40%', zIndex: 2 },
+  dresses:     { top: '16%', left: '16%', right: '16%', height: '58%', zIndex: 2 },
+  tops:        { top: '18%', left: '16%', right: '16%', height: '30%', zIndex: 3 },
+  bottoms:     { top: '46%', left: '16%', right: '16%', height: '32%', zIndex: 3 },
+  shoes:       { top: '77%', left: '20%', right: '20%', height: '19%', zIndex: 4 },
+};
 
-      Alert.alert(`${view === 'front' ? 'Voor' : 'Zij'}foto uploaden`, undefined, [
-        {
-          text: 'Camera',
-          onPress: async () => {
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              quality: 0.9,
-              allowsEditing: true,
-              aspect: [3, 4],
-            });
-            if (!result.canceled && result.assets[0]) {
-              setFrontPhotoUri(result.assets[0].uri);
-              await startTryOn(result.assets[0].uri);
-            }
-          },
-        },
-        {
-          text: 'Galerij',
-          onPress: async () => {
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ImagePicker.MediaTypeOptions.Images,
-              quality: 0.9,
-              allowsEditing: true,
-              aspect: [3, 4],
-            });
-            if (!result.canceled && result.assets[0]) {
-              setFrontPhotoUri(result.assets[0].uri);
-              await startTryOn(result.assets[0].uri);
-            }
-          },
-        },
-        { text: t('common.cancel'), style: 'cancel' },
-      ]);
-    },
-    [t],
+// Rendering order: back to front
+const RENDER_ORDER: Cat[] = ['outerwear', 'dresses', 'bottoms', 'tops', 'shoes', 'accessories'];
+
+// ─── Mannequin ────────────────────────────────────────────────────────────────
+
+function Mannequin() {
+  return (
+    <View style={manS.wrap} pointerEvents="none">
+      <View style={manS.head} />
+      <View style={manS.neckRow}>
+        <View style={manS.shoulderL} />
+        <View style={manS.neck} />
+        <View style={manS.shoulderR} />
+      </View>
+      <View style={manS.torso} />
+      <View style={manS.waist} />
+      <View style={manS.hips} />
+      <View style={manS.legsRow}>
+        <View style={manS.leg} />
+        <View style={manS.leg} />
+      </View>
+      <View style={manS.feetRow}>
+        <View style={manS.foot} />
+        <View style={manS.foot} />
+      </View>
+    </View>
   );
+}
 
-  const startTryOn = async (uri: string) => {
-    setState('processing');
-    try {
-      // Simulate processing delay
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      // In a real implementation, call the try-on API
-      setResultImageUri(uri); // placeholder: show uploaded photo as result
-      setState('result');
-    } catch {
-      setErrorMessage(t('common.error'));
-      setState('error');
-    }
-  };
+const MC = '#DED8D0';
+const manS = StyleSheet.create({
+  wrap: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: '6%',
+  },
+  head:      { width: 46, height: 46, borderRadius: 23, backgroundColor: MC },
+  neckRow:   { flexDirection: 'row', alignItems: 'flex-end', marginTop: 2 },
+  shoulderL: { width: 36, height: 16, backgroundColor: MC, borderTopLeftRadius: 8 },
+  neck:      { width: 16, height: 12, backgroundColor: MC },
+  shoulderR: { width: 36, height: 16, backgroundColor: MC, borderTopRightRadius: 8 },
+  torso:     { width: 78, height: 88, backgroundColor: MC, borderRadius: 4 },
+  waist:     { width: 64, height: 12, backgroundColor: MC },
+  hips:      { width: 88, height: 22, backgroundColor: MC, borderRadius: 6 },
+  legsRow:   { flexDirection: 'row', gap: 8, marginTop: 2 },
+  leg:       { width: 34, height: 120, backgroundColor: MC, borderRadius: 6 },
+  feetRow:   { flexDirection: 'row', gap: 12, marginTop: 2 },
+  foot:      { width: 38, height: 14, backgroundColor: MC, borderRadius: 4 },
+});
 
-  const handleShare = useCallback(async () => {
-    if (!resultImageUri) return;
-    try {
-      await Share.share({
-        url: resultImageUri,
-        message: 'Kijk hoe mijn outfit eruitziet! via Check Your Fit',
-      });
-    } catch {
-      // Share cancelled
-    }
-  }, [resultImageUri]);
+// ─── ItemThumb ────────────────────────────────────────────────────────────────
 
-  const handleRetry = useCallback(() => {
-    setState('no-photo');
-    setFrontPhotoUri(null);
-    setResultImageUri(null);
-    setErrorMessage(null);
-  }, []);
+function ItemThumb({
+  item,
+  selected,
+  onPress,
+}: {
+  item: ClothingItem;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={thumbS.wrap}>
+      <View style={[thumbS.frame, selected && thumbS.frameSelected]}>
+        <Image source={{ uri: item.imageUrl }} style={thumbS.image} resizeMode="contain" />
+        {selected && (
+          <View style={thumbS.checkBadge}>
+            <Ionicons name="checkmark" size={10} color={colors.white} />
+          </View>
+        )}
+      </View>
+      {item.brand ? (
+        <Text style={thumbS.brand} numberOfLines={1}>{item.brand}</Text>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+const thumbS = StyleSheet.create({
+  wrap:  { width: THUMB + 8, alignItems: 'center', gap: 4 },
+  frame: {
+    width: THUMB,
+    height: THUMB,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  frameSelected: {
+    borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  image: { width: '100%', height: '100%' },
+  checkBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brand: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    maxWidth: THUMB + 8,
+  },
+});
+
+// ─── CategoryRow ──────────────────────────────────────────────────────────────
+
+function CategoryRow({
+  category,
+  label,
+  icon,
+  items,
+  selectedItem,
+  onSelect,
+}: {
+  category: Cat;
+  label: string;
+  icon: string;
+  items: ClothingItem[];
+  selectedItem: ClothingItem | null;
+  onSelect: (item: ClothingItem) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (items.length === 0) return null;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Probeer aan</Text>
-        {state === 'result' && (
-          <TouchableOpacity onPress={handleShare} activeOpacity={0.7}>
-            <Ionicons name="share-outline" size={24} color={colors.accent} />
-          </TouchableOpacity>
+    <View style={rowS.container}>
+      <View style={rowS.header}>
+        <Text style={rowS.icon}>{icon}</Text>
+        <Text style={rowS.label}>{label}</Text>
+        {selectedItem && (
+          <View style={rowS.selectedBadge}>
+            <Text style={rowS.selectedBadgeText}>{selectedItem.subcategory ?? selectedItem.brand ?? '✓'}</Text>
+          </View>
         )}
-        {state !== 'result' && <View style={{ width: 24 }} />}
+        <TouchableOpacity
+          onPress={() => setCollapsed((c) => !c)}
+          activeOpacity={0.7}
+          style={rowS.hideBtn}
+        >
+          <Ionicons
+            name={collapsed ? 'chevron-down' : 'chevron-up'}
+            size={14}
+            color={colors.textMuted}
+          />
+          <Text style={rowS.hideBtnText}>{collapsed ? 'Toon' : 'Verberg'}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* No photo state */}
-      {state === 'no-photo' && (
-        <View style={styles.centered}>
-          <Text style={styles.noPhotoEmoji}>🧍</Text>
-          <Text style={styles.noPhotoTitle}>Upload je foto</Text>
-          <Text style={styles.noPhotoSubtitle}>
-            Upload een voor- en zijaanzichtfoto om te zien hoe de outfit op jou staat.
-          </Text>
-
-          <View style={styles.photoSlots}>
-            <Card style={styles.photoSlot}>
-              <View style={styles.photoSlotContent}>
-                <Ionicons name="person-outline" size={32} color={colors.textMuted} />
-                <Text style={styles.photoSlotLabel}>Voorzijde</Text>
-                <Button
-                  label="Uploaden"
-                  onPress={() => handleUploadPhoto('front')}
-                  variant="secondary"
-                  style={styles.photoSlotBtn}
-                />
-              </View>
-            </Card>
-            <Card style={styles.photoSlot}>
-              <View style={styles.photoSlotContent}>
-                <Ionicons name="person-outline" size={32} color={colors.textMuted} />
-                <Text style={styles.photoSlotLabel}>Zijkant</Text>
-                <Button
-                  label="Uploaden"
-                  onPress={() => handleUploadPhoto('side')}
-                  variant="secondary"
-                  style={styles.photoSlotBtn}
-                />
-              </View>
-            </Card>
-          </View>
-        </View>
-      )}
-
-      {/* Processing state */}
-      {state === 'processing' && (
-        <View style={styles.centered}>
-          <View style={styles.processingContent}>
-            {frontPhotoUri && (
-              <Image
-                source={{ uri: frontPhotoUri }}
-                style={styles.processingPhoto}
-                resizeMode="cover"
-              />
-            )}
-            <View style={styles.processingOverlay}>
-              <ActivityIndicator size="large" color={colors.white} />
-            </View>
-          </View>
-          <Text style={styles.processingTitle}>Je outfit wordt op jou gepast...</Text>
-          <View style={styles.skeletonRow}>
-            <SkeletonLoader height={14} width="60%" />
-          </View>
-        </View>
-      )}
-
-      {/* Result state */}
-      {state === 'result' && resultImageUri && (
-        <View style={styles.resultContainer}>
-          <Image
-            source={{ uri: resultImageUri }}
-            style={styles.resultImage}
-            resizeMode="cover"
-          />
-          <View style={[styles.resultActions, { paddingBottom: insets.bottom + spacing.base }]}>
-            <Button
-              label="Opnieuw proberen"
-              onPress={handleRetry}
-              variant="secondary"
-              fullWidth
+      {!collapsed && (
+        <FlatList
+          data={items}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(i) => i.id}
+          contentContainerStyle={rowS.list}
+          renderItem={({ item }) => (
+            <ItemThumb
+              item={item}
+              selected={selectedItem?.id === item.id}
+              onPress={() => onSelect(item)}
             />
-            <Button
-              label="Deel"
-              onPress={handleShare}
-              fullWidth
-            />
-          </View>
-        </View>
-      )}
-
-      {/* Error state */}
-      {state === 'error' && (
-        <View style={styles.centered}>
-          <Ionicons name="alert-circle-outline" size={56} color={colors.textMuted} />
-          <Text style={styles.noPhotoTitle}>{t('common.error')}</Text>
-          {errorMessage && (
-            <Text style={styles.noPhotoSubtitle}>{errorMessage}</Text>
           )}
-          <Button label={t('common.retry')} onPress={handleRetry} />
-        </View>
+        />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const rowS = StyleSheet.create({
   container: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.sm,
+    paddingBottom: 4,
+    gap: spacing.xs,
+  },
+  icon:  { fontSize: 14 },
+  label: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  selectedBadge: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    maxWidth: 100,
+  },
+  selectedBadgeText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+  },
+  hideBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  hideBtnText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+  },
+  list: {
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+});
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
+export default function TryOnScreen() {
+  const insets     = useSafeAreaInsets();
+  const router     = useRouter();
+  const items      = useWardrobeStore((s) => s.items);
+  const bodyPhoto  = useAuthStore((s) => s.bodyPhotoUri);
+
+  const [selected, setSelected] = useState<Partial<Record<Cat, ClothingItem>>>({});
+
+  const itemsByCategory = useMemo(() => {
+    const map: Partial<Record<Cat, ClothingItem[]>> = {};
+    for (const item of items) {
+      if (!map[item.category]) map[item.category] = [];
+      map[item.category]!.push(item);
+    }
+    return map;
+  }, [items]);
+
+  const handleSelect = useCallback((item: ClothingItem) => {
+    setSelected((prev) => {
+      // Tapping the already-selected item deselects it
+      if (prev[item.category]?.id === item.id) {
+        const next = { ...prev };
+        delete next[item.category];
+        return next;
+      }
+      return { ...prev, [item.category]: item };
+    });
+  }, []);
+
+  const handleRegenerate = useCallback(() => {
+    const next: Partial<Record<Cat, ClothingItem>> = {};
+    for (const { key } of CATEGORIES) {
+      const pool = itemsByCategory[key];
+      if (pool && pool.length > 0) {
+        next[key] = pool[Math.floor(Math.random() * pool.length)];
+      }
+    }
+    setSelected(next);
+  }, [itemsByCategory]);
+
+  const handleClearAll = useCallback(() => setSelected({}), []);
+
+  const selectedCount = Object.keys(selected).length;
+
+  return (
+    <View style={[s.screen, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={s.headerBtn}>
+          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        </TouchableOpacity>
+
+        <Text style={s.headerTitle}>Outfit samenstellen</Text>
+
+        <TouchableOpacity onPress={handleRegenerate} activeOpacity={0.8} style={s.regenBtn}>
+          <Ionicons name="shuffle" size={14} color={colors.white} />
+          <Text style={s.regenText}>Stel voor</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Model area */}
+      <View style={s.modelArea}>
+        {/* Background */}
+        <View style={StyleSheet.absoluteFill}>
+          {bodyPhoto ? (
+            <Image
+              source={{ uri: bodyPhoto }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="contain"
+            />
+          ) : (
+            <Mannequin />
+          )}
+        </View>
+
+        {/* Clothing overlays — rendered back to front */}
+        {RENDER_ORDER.map((cat) => {
+          const item = selected[cat];
+          if (!item) return null;
+          const zone = ZONES[cat];
+          return (
+            <Image
+              key={cat}
+              source={{ uri: item.imageUrl }}
+              style={[
+                s.overlay,
+                {
+                  top: zone.top,
+                  left: zone.left,
+                  right: zone.right,
+                  height: zone.height,
+                  zIndex: zone.zIndex,
+                },
+              ]}
+              resizeMode="contain"
+            />
+          );
+        })}
+
+        {/* Clear button (only when items selected) */}
+        {selectedCount > 0 && (
+          <TouchableOpacity style={s.clearBtn} onPress={handleClearAll} activeOpacity={0.8}>
+            <Ionicons name="close" size={14} color={colors.textSecondary} />
+            <Text style={s.clearText}>Wis alles</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Item count chip */}
+        {selectedCount > 0 && (
+          <View style={s.countChip}>
+            <Text style={s.countText}>{selectedCount} item{selectedCount !== 1 ? 's' : ''}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Closet panel */}
+      <View style={[s.closet, { height: CLOSET_HEIGHT + insets.bottom }]}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.base }}
+        >
+          {items.length === 0 ? (
+            <View style={s.emptyState}>
+              <Ionicons name="shirt-outline" size={32} color={colors.textMuted} />
+              <Text style={s.emptyText}>
+                Geen kledingstukken gevonden.{'\n'}Scan je kledingkast om te beginnen.
+              </Text>
+              <TouchableOpacity
+                style={s.scanCta}
+                onPress={() => router.push('/(app)/wardrobe/scan')}
+                activeOpacity={0.8}
+              >
+                <Text style={s.scanCtaText}>Kledingkast scannen</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            CATEGORIES.map(({ key, label, icon }) => (
+              <CategoryRow
+                key={key}
+                category={key}
+                label={label}
+                icon={icon}
+                items={itemsByCategory[key] ?? []}
+                selectedItem={selected[key] ?? null}
+                onSelect={handleSelect}
+              />
+            ))
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  screen: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screen,
-    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  headerBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
+    flex: 1,
     fontFamily: typography.fonts.serif.bold,
     fontSize: typography.fontSizes.md,
     color: colors.textPrimary,
   },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
-  },
-  noPhotoEmoji: {
-    fontSize: 64,
-  },
-  noPhotoTitle: {
-    fontFamily: typography.fonts.serif.bold,
-    fontSize: typography.fontSizes.lg,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  noPhotoSubtitle: {
-    fontSize: typography.fontSizes.base,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  photoSlots: {
+  regenBtn: {
     flexDirection: 'row',
-    gap: spacing.md,
-    width: '100%',
-    marginTop: spacing.md,
-  },
-  photoSlot: {
-    flex: 1,
-  },
-  photoSlotContent: {
     alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
+    gap: 5,
+    backgroundColor: colors.accent,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
   },
-  photoSlotLabel: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
-    color: colors.textSecondary,
+  regenText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.white,
   },
-  photoSlotBtn: {
-    minHeight: 36,
-  },
-  processingContent: {
-    width: 200,
-    height: 280,
-    borderRadius: 16,
+  modelArea: {
+    flex: 1,
+    backgroundColor: '#F4F1EC',
     overflow: 'hidden',
-    position: 'relative',
-    marginBottom: spacing.base,
-    backgroundColor: colors.surfaceAlt,
   },
-  processingPhoto: {
-    width: '100%',
-    height: '100%',
+  overlay: {
+    position: 'absolute',
+    bottom: undefined,
   },
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+  clearBtn: {
+    position: 'absolute',
+    bottom: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  processingTitle: {
-    fontFamily: typography.fonts.serif.bold,
-    fontSize: typography.fontSizes.md,
-    color: colors.textPrimary,
-    textAlign: 'center',
+  clearText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeights.medium,
   },
-  skeletonRow: {
-    width: '100%',
-    alignItems: 'center',
+  countChip: {
+    position: 'absolute',
+    bottom: spacing.md,
+    left: spacing.md,
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
   },
-  resultContainer: {
-    flex: 1,
+  countText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.white,
+    fontWeight: typography.fontWeights.semibold,
   },
-  resultImage: {
-    flex: 1,
-    backgroundColor: colors.surfaceAlt,
-  },
-  resultActions: {
-    paddingHorizontal: spacing.screen,
-    paddingTop: spacing.base,
-    gap: spacing.md,
+  closet: {
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+      },
+      android: { elevation: 8 },
+    }),
+  },
+  emptyState: {
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  scanCta: {
+    backgroundColor: colors.accent,
+    borderRadius: 20,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  scanCtaText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.white,
   },
 });

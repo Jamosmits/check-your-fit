@@ -142,13 +142,20 @@ export default function OutfitsIndexScreen() {
         />
       )}
 
-      {/* FAB */}
+      {/* FABs */}
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + spacing.lg }]}
+        onPress={() => router.push('/(app)/outfits/try-on')}
+        activeOpacity={0.9}
+      >
+        <Ionicons name="shirt" size={22} color={colors.white} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.fabSecondary, { bottom: insets.bottom + spacing.lg + 56 + spacing.sm }]}
         onPress={() => router.push('/(app)/outfits/build')}
         activeOpacity={0.9}
       >
-        <Ionicons name="add" size={28} color={colors.white} />
+        <Ionicons name="add" size={22} color={colors.accent} />
       </TouchableOpacity>
     </View>
   );
@@ -251,6 +258,27 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
       },
       android: { elevation: 6 },
+    }),
+  },
+  fabSecondary: {
+    position: 'absolute',
+    right: spacing.lg,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+      },
+      android: { elevation: 4 },
     }),
   },
 });

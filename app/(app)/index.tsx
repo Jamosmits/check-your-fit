@@ -206,8 +206,8 @@ export default function HomeScreen() {
                 Stel je outfit voor vandaag samen
               </Text>
               <Button
-                label={t('home.quickActions.outfit')}
-                onPress={() => router.push('/(app)/outfits/build')}
+                label="Outfit samenstellen"
+                onPress={() => router.push('/(app)/outfits/try-on')}
                 variant="secondary"
                 style={styles.outfitButton}
               />
@@ -278,13 +278,13 @@ export default function HomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickAction}
-              onPress={() => router.push('/(app)/outfits/build')}
+              onPress={() => router.push('/(app)/outfits/try-on')}
               activeOpacity={0.8}
             >
               <View style={styles.quickActionIcon}>
-                <Ionicons name="albums" size={22} color={colors.accent} />
+                <Ionicons name="shirt" size={22} color={colors.accent} />
               </View>
-              <Text style={styles.quickActionLabel}>{t('home.quickActions.outfit')}</Text>
+              <Text style={styles.quickActionLabel}>Styler</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.quickAction}
