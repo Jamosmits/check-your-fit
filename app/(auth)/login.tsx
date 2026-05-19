@@ -24,6 +24,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const setAuth = useAuthStore((s) => s.setAuth);
+  const loginAsDemo = useAuthStore((s) => s.loginAsDemo);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,6 +56,11 @@ export default function LoginScreen() {
       setIsLoading(false);
     }
   }, [email, password, setAuth, router, t]);
+
+  const handleSkip = useCallback(() => {
+    loginAsDemo();
+    router.replace('/(app)/');
+  }, [loginAsDemo, router]);
 
   return (
     <KeyboardAvoidingView
@@ -92,10 +98,7 @@ export default function LoginScreen() {
             autoComplete="password"
           />
 
-          <TouchableOpacity
-            onPress={() => {}}
-            style={styles.forgotLink}
-          >
+          <TouchableOpacity onPress={() => {}} style={styles.forgotLink}>
             <Text style={styles.forgotText}>{t('auth.login.forgotPassword')}</Text>
           </TouchableOpacity>
 
@@ -118,6 +121,17 @@ export default function LoginScreen() {
             <Text style={styles.registerLink}>{t('auth.login.register')}</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>of</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <TouchableOpacity style={styles.skipButton} onPress={handleSkip} activeOpacity={0.7}>
+          <Text style={styles.skipLabel}>Bekijk app met demo data</Text>
+          <Text style={styles.skipSub}>Geen account nodig · 15 kledingstukken · 4 outfits</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -172,5 +186,39 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: typography.fontWeights.semibold,
     textDecorationLine: 'underline',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xl,
+    marginBottom: spacing.base,
+    gap: spacing.sm,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textSecondary,
+  },
+  skipButton: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    gap: 4,
+  },
+  skipLabel: {
+    fontSize: typography.fontSizes.base,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.textPrimary,
+  },
+  skipSub: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textSecondary,
   },
 });

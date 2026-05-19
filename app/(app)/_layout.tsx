@@ -7,17 +7,17 @@ import { Sidebar } from '@/components/navigation/Sidebar';
 import { colors } from '@/theme/colors';
 
 function AppLayoutInner() {
-  const { user, isLoading } = useAuthStore();
+  const { user, isDemo, isLoading } = useAuthStore();
   const { isOpen, close } = useSidebar();
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (!isLoading && !user && !isDemo) {
       router.replace('/(auth)/welcome');
     }
-  }, [user, isLoading]);
+  }, [user, isDemo, isLoading]);
 
-  if (!user) return null;
+  if (!user && !isDemo) return null;
 
   return (
     <View style={styles.container}>
