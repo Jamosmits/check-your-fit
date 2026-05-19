@@ -1,8 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { scanService, ScanJob, ScannedItem } from '@/services/scanService';
 import { useAuthStore } from '@/store/authStore';
-import { useWardrobeStore } from '@/store/wardrobeStore';
-import { ClothingItem } from '@/store/wardrobeStore';
+import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
+
+function makeId() {
+  return `scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export type ScanState = 'INTRO' | 'RECORDING' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
 
@@ -155,41 +158,27 @@ export function useScan(): UseScanReturn {
   }, [scannedItems]);
 
   const submitReview = useCallback(async () => {
-    if (isDemo) {
-      const now = new Date().toISOString();
-      scannedItems
-        .filter((item) => confirmedIds.has(item.id))
-        .forEach((item) => {
-          const newItem: ClothingItem = {
-            id: `scanned-${Date.now()}-${item.id}`,
-            userId: 'demo-user',
-            imageUrl: item.imageUrl,
-            category: item.category,
-            subcategory: item.subcategory,
-            brand: item.brand,
-            colors: item.colors,
-            timesWorn: 0,
-            createdAt: now,
-            updatedAt: now,
-          };
-          addItem(newItem);
-        });
-      setScanState('COMPLETE');
-      return;
-    }
-
-    if (!scanJob) return;
-    try {
-      await scanService.confirmScanResults(
-        scanJob.id,
-        Array.from(confirmedIds),
-        Array.from(rejectedIds),
-      );
-      setScanState('COMPLETE');
-    } catch {
-      setError('Er ging iets mis. Probeer opnieuw.');
-    }
-  }, [isDemo, scanJob, confirmedIds, rejectedIds, scannedItems, addItem]);
+    // Always save confirmed items to local store — no backend needed
+    const now = new Date().toISOString();
+    scannedItems
+      .filter((item) => confirmedIds.has(item.id))
+      .forEach((item) => {
+        const newItem: ClothingItem = {
+          id:          makeId(),
+          userId:      useAuthStore.getState().user?.id ?? 'local',
+          imageUrl:    item.imageUrl,
+          category:    item.category,
+          subcategory: item.subcategory,
+          brand:       item.brand,
+          colors:      item.colors ?? [],
+          timesWorn:   0,
+          createdAt:   now,
+          updatedAt:   now,
+        };
+        addItem(newItem);
+      });
+    setScanState('COMPLETE');
+  }, [scannedItems, confirmedIds, addItem]);
 
   const reset = useCallback(() => {
     stopPolling();

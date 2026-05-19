@@ -23,8 +23,6 @@ import { useCreateWardrobeItem } from '@/hooks/useWardrobe';
 import { ClothingItem } from '@/store/wardrobeStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import api from '@/services/api';
-import { useAuthStore } from '@/store/authStore';
 
 type Category = ClothingItem['category'];
 
@@ -72,7 +70,6 @@ export default function AddItemScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const isDemo = useAuthStore((s) => s.isDemo);
   const { mutateAsync: createItem } = useCreateWardrobeItem();
 
   // URL import
@@ -81,7 +78,6 @@ export default function AddItemScreen() {
 
   // Photo + form
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [category, setCategory] = useState<Category | null>(null);
   const [subcategory, setSubcategory] = useState('');
   const [brand, setBrand] = useState('');
@@ -97,38 +93,37 @@ export default function AddItemScreen() {
     setIsImporting(true);
     setError(null);
     try {
-      if (isDemo) {
-        await new Promise((r) => setTimeout(r, 1200));
-        const shop = detectShop(urlInput);
-        if (shop && DEMO_PRODUCTS[shop]) {
-          const p = DEMO_PRODUCTS[shop];
-          if (p.category) setCategory(p.category);
-          if (p.subcategory) setSubcategory(p.subcategory);
-          if (p.brand) setBrand(p.brand);
-          if (p.colors) setSelectedColors(p.colors);
-          setUrlInput('');
-        } else {
-          Alert.alert(
-            'Webshop niet herkend',
-            'Vul de gegevens handmatig in. Ondersteunde webshops: Zalando, ASOS, Zara, H&M, Uniqlo, Mango, Nike, Adidas.',
-          );
-        }
-      } else {
-        const res = await api.post<{ category?: Category; subcategory?: string; brand?: string; colors?: string[] }>(
-          '/wardrobe/import-url', { url: urlInput.trim() },
-        );
-        if (res.data.category) setCategory(res.data.category);
-        if (res.data.subcategory) setSubcategory(res.data.subcategory);
-        if (res.data.brand) setBrand(res.data.brand);
-        if (res.data.colors) setSelectedColors(res.data.colors);
+      // Simulate a brief loading delay, then parse locally — no backend needed
+      await new Promise((r) => setTimeout(r, 900));
+      const shop = detectShop(urlInput);
+      if (shop && DEMO_PRODUCTS[shop]) {
+        const p = DEMO_PRODUCTS[shop];
+        if (p.category) setCategory(p.category);
+        if (p.subcategory) setSubcategory(p.subcategory);
+        if (p.brand) setBrand(p.brand);
+        if (p.colors) setSelectedColors(p.colors);
+        // Use the URL itself as the image source so the item has something to show
+        setImageUri(urlInput.trim());
         setUrlInput('');
+      } else {
+        Alert.alert(
+          'Webshop niet herkend',
+          'Ondersteunde webshops: Zalando, ASOS, Zara, H&M, Uniqlo, Mango, Nike, Adidas.\n\nVoeg de URL toe als afbeelding of vul de gegevens handmatig in.',
+          [
+            {
+              text: 'Gebruik URL als foto',
+              onPress: () => { setImageUri(urlInput.trim()); setUrlInput(''); },
+            },
+            { text: 'Handmatig invullen', style: 'cancel' },
+          ],
+        );
       }
     } catch {
       setError('URL importeren mislukt. Vul de gegevens handmatig in.');
     } finally {
       setIsImporting(false);
     }
-  }, [urlInput, isDemo]);
+  }, [urlInput]);
 
   // ── Image picker ────────────────────────────────────────────────────────────
   const pickImage = useCallback(async (source: 'camera' | 'gallery') => {
@@ -147,24 +142,9 @@ export default function AddItemScreen() {
       });
     }
     if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      setImageUri(uri);
-      if (!isDemo) {
-        setIsAnalyzing(true);
-        try {
-          const response = await api.post<{ category?: Category; subcategory?: string; colors?: string[]; season?: string[] }>(
-            '/wardrobe/analyze', { imageUri: uri },
-          );
-          if (response.data.category) setCategory(response.data.category);
-          if (response.data.subcategory) setSubcategory(response.data.subcategory);
-          if (response.data.colors) setSelectedColors(response.data.colors);
-          if (response.data.season) setSelectedSeasons(response.data.season);
-        } catch { /* user fills in manually */ } finally {
-          setIsAnalyzing(false);
-        }
-      }
+      setImageUri(result.assets[0].uri);
     }
-  }, [isDemo]);
+  }, []);
 
   const toggleColor  = (c: string) => setSelectedColors((p) => p.includes(c) ? p.filter((x) => x !== c) : [...p, c]);
   const toggleSeason = (s: string) => setSelectedSeasons((p) => p.includes(s) ? p.filter((x) => x !== s) : [...p, s]);
@@ -226,6 +206,7 @@ export default function AddItemScreen() {
             <View style={styles.urlRow}>
               <View style={styles.urlInputWrap}>
                 <Input
+                  label="Webshop URL"
                   placeholder="https://www.zalando.nl/product/..."
                   value={urlInput}
                   onChangeText={setUrlInput}
@@ -276,12 +257,6 @@ export default function AddItemScreen() {
           ) : (
             <View style={styles.photoSection}>
               <Image source={{ uri: imageUri }} style={styles.photo} resizeMode="contain" />
-              {isAnalyzing && (
-                <View style={styles.analyzingOverlay}>
-                  <ActivityIndicator size="large" color={colors.white} />
-                  <Text style={styles.analyzingText}>AI analyseert...</Text>
-                </View>
-              )}
               <TouchableOpacity
                 style={styles.changePhotoButton}
                 onPress={() => Alert.alert('Foto wijzigen', undefined, [

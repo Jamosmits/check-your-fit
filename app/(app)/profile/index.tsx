@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   forgottenLabel: {
     fontSize: fontSizes.xs,
-    color: colors.warning,
+    color: colors.status.warning,
     textAlign: 'center',
   },
   settingsCard: {
