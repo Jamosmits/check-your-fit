@@ -42,6 +42,8 @@ export const colors = {
   },
 
   border: '#E5E5EA',
+  borderLight: '#F0F0F5',
+  error: '#FF3B30',
   overlay: 'rgba(0, 0, 0, 0.5)',
 } as const;
 

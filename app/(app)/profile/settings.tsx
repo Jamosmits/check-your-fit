@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Platform,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -18,6 +19,7 @@ import { fontSizes, fontWeights } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -68,14 +70,110 @@ function SettingsRow({
   );
 }
 
+function ApiKeyInput({
+  label,
+  placeholder,
+  value,
+  onSave,
+  helpText,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onSave: (key: string) => Promise<void>;
+  helpText?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { setDraft(value); }, [value]);
+
+  const handleSave = async () => {
+    await onSave(draft.trim());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const masked = draft.length > 8
+    ? `${draft.slice(0, 4)}${'•'.repeat(Math.min(draft.length - 8, 20))}${draft.slice(-4)}`
+    : draft;
+
+  return (
+    <View style={apiS.container}>
+      <Text style={apiS.label}>{label}</Text>
+      <View style={apiS.row}>
+        <TextInput
+          style={apiS.input}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textMuted}
+          secureTextEntry={false}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <TouchableOpacity
+          style={[apiS.saveBtn, saved && apiS.saveBtnDone]}
+          onPress={handleSave}
+          activeOpacity={0.8}
+        >
+          <Text style={apiS.saveBtnText}>{saved ? '✓' : 'Opslaan'}</Text>
+        </TouchableOpacity>
+      </View>
+      {helpText ? <Text style={apiS.help}>{helpText}</Text> : null}
+    </View>
+  );
+}
+
+const apiS = StyleSheet.create({
+  container: { paddingHorizontal: spacing.base, paddingVertical: spacing.md, gap: spacing.sm },
+  label: {
+    fontSize: fontSizes.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.textSecondary,
+  },
+  row: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  input: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    fontSize: fontSizes.sm,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceAlt,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  saveBtn: {
+    paddingHorizontal: spacing.md,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 80,
+  },
+  saveBtnDone: { backgroundColor: colors.status.success },
+  saveBtnText: { color: colors.white, fontSize: fontSizes.sm, fontWeight: fontWeights.semibold },
+  help: { fontSize: fontSizes.xs, color: colors.textMuted, lineHeight: 16 },
+});
+
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t, locale, setLocale } = useTranslation();
   const logout = useAuthStore((s) => s.logout);
 
+  const { openaiKey, removeBgKey, isLoaded, loadKeys, setOpenaiKey, setRemoveBgKey } =
+    useSettingsStore();
+
   const [outfitReminders, setOutfitReminders] = useState(false);
   const [marketingNotifs, setMarketingNotifs] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded) loadKeys();
+  }, [isLoaded, loadKeys]);
 
   function handleLanguageToggle() {
     const next = locale === 'nl' ? 'en' : 'nl';
@@ -189,6 +287,26 @@ export default function SettingsScreen() {
           onPress={() => {
             Alert.alert('Wachtwoord wijzigen', 'Er wordt een resetlink naar je e-mailadres gestuurd.');
           }}
+        />
+      </Card>
+
+      {/* AI-integratie */}
+      <SectionHeader label="AI-integratie" />
+      <Card style={styles.card}>
+        <ApiKeyInput
+          label="OpenAI API-sleutel"
+          placeholder="sk-..."
+          value={openaiKey}
+          onSave={setOpenaiKey}
+          helpText="Vereist voor de kledingkastscan. Maak een sleutel aan op platform.openai.com."
+        />
+        <View style={styles.divider} />
+        <ApiKeyInput
+          label="Remove.bg API-sleutel"
+          placeholder="Plak je Remove.bg sleutel"
+          value={removeBgKey}
+          onSave={setRemoveBgKey}
+          helpText="Optioneel — verwijdert achtergronden van kleding. Gratis plan beschikbaar op remove.bg."
         />
       </Card>
 
