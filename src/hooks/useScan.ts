@@ -5,6 +5,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
 import { removeBackground } from '@/services/removeBgService';
 import { smartCropGarment } from '@/services/cropService';
+import { generateProductPhoto } from '@/services/dalleEditService';
 
 export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
 export type ScanMode  = 'wardrobe' | 'single';
@@ -43,6 +44,7 @@ const PROCESSING_LABELS = [
   'Items herkennen...',
   'Achtergronden verwijderen...',
   'Uitsnijden en centreren...',
+  'Productfoto genereren...',
   'Kleuren bepalen...',
   'Stijlen classificeren...',
 ];
@@ -101,7 +103,10 @@ export function useScan(): UseScanReturn {
       const bgRemovedUri = await removeBackground(sourceUri, removeBgKey);
 
       // Step 3 — Auto-crop: hanger weg, resize
-      const finalUri = await smartCropGarment(bgRemovedUri);
+      const croppedUri = await smartCropGarment(bgRemovedUri);
+
+      // Step 4 — DALL-E 2: ghost mannequin productfoto (valt terug op cropped als geen key)
+      const finalUri = await generateProductPhoto(croppedUri, openaiKey);
 
       const items: ReviewItem[] = detected.map((d) => ({
         ...d,
