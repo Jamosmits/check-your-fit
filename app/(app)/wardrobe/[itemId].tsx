@@ -20,7 +20,7 @@ import { useTranslation } from '@/i18n';
 import { useWardrobeItem, useDeleteWardrobeItem, useMarkWorn, useUpdateWardrobeItem } from '@/hooks/useWardrobe';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { applyGhostMannequin, GhostCategory } from '@/services/replicateService';
+import { generateProductPhoto } from '@/services/productPhotoService';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -47,7 +47,7 @@ export default function ItemDetailScreen() {
   const { mutateAsync: markWorn, isPending: isMarkingWorn } = useMarkWorn();
   const { mutateAsync: updateItem, isPending: isUpdating } = useUpdateWardrobeItem();
   const updateItemDirect = useWardrobeStore((s) => s.updateItem);
-  const replicateKey     = useSettingsStore((s) => s.replicateKey);
+  const openaiKey        = useSettingsStore((s) => s.openaiKey);
 
   const [isEditMode,      setIsEditMode]      = useState(false);
   const [editSubcategory, setEditSubcategory] = useState('');
@@ -90,24 +90,35 @@ export default function ItemDetailScreen() {
   }, [itemId, updateItem, editSubcategory, editBrand]);
 
   const handleGenerateProductPhoto = useCallback(async () => {
-    if (!item || !replicateKey) return;
+    console.log('[itemDetail] handleGenerateProductPhoto pressed');
+    console.log('[itemDetail] item:', item?.id, '| openaiKey:', openaiKey ? '✓ set' : '✗ missing');
+
+    if (!item) {
+      console.warn('[itemDetail] No item loaded');
+      return;
+    }
+
     setIsGenerating(true);
     setGenerateError(null);
+
     try {
-      const catMap: Record<string, GhostCategory> = {
-        tops: 0, outerwear: 0, bottoms: 1, dresses: 2,
-      };
-      const category: GhostCategory = catMap[item.category] ?? 0;
       const sourceUri = item.processedPhotoUrl ?? item.imageUrl;
-      const newUri = await applyGhostMannequin(sourceUri, replicateKey, category);
+      console.log('[itemDetail] Source URI:', sourceUri.slice(0, 80));
+
+      const newUri = await generateProductPhoto(sourceUri, openaiKey);
+      console.log('[itemDetail] Generated URI:', newUri.slice(0, 80));
+
       const now = new Date().toISOString();
       updateItemDirect(item.id, { imageUrl: newUri, processedPhotoUrl: newUri, updatedAt: now });
-    } catch {
-      setGenerateError('Genereren mislukt. Probeer opnieuw.');
+      console.log('[itemDetail] Item updated successfully');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Genereren mislukt. Probeer opnieuw.';
+      console.error('[itemDetail] Generate error:', e);
+      setGenerateError(msg);
     } finally {
       setIsGenerating(false);
     }
-  }, [item, replicateKey, updateItemDirect]);
+  }, [item, openaiKey, updateItemDirect]);
 
   const startEdit = useCallback(() => {
     if (item) {
@@ -295,26 +306,32 @@ export default function ItemDetailScreen() {
               fullWidth
             />
 
-            {/* Ghost mannequin via Replicate */}
+            {/* Ghost mannequin via GPT-4o Vision + DALL-E 3 */}
             <View style={styles.generateSection}>
-              <Button
-                label={isGenerating ? 'Bezig...' : 'Genereer productfoto'}
-                onPress={handleGenerateProductPhoto}
-                isLoading={isGenerating}
-                variant="secondary"
-                fullWidth
-                disabled={!replicateKey || isGenerating}
-              />
-              {!replicateKey ? (
-                <Text style={styles.generateHint}>
-                  Stel een Replicate API-sleutel in bij Instellingen om productfoto's te genereren.
-                </Text>
+              {isGenerating ? (
+                <View style={styles.generatingRow}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.generatingText}>Productfoto genereren... ±15 sec</Text>
+                </View>
               ) : (
+                <Button
+                  label="Genereer productfoto"
+                  onPress={handleGenerateProductPhoto}
+                  variant="secondary"
+                  fullWidth
+                  disabled={!openaiKey}
+                />
+              )}
+              {!openaiKey ? (
                 <Text style={styles.generateHint}>
-                  Duurt 15–30 seconden. De foto wordt vervangen door een professionele productfoto.
+                  Stel een OpenAI API-sleutel in bij Instellingen om productfoto's te genereren.
+                </Text>
+              ) : !isGenerating && (
+                <Text style={styles.generateHint}>
+                  GPT-4o beschrijft het item, DALL-E 3 genereert een professionele productfoto (±15 sec).
                 </Text>
               )}
-              {generateError && (
+              {generateError !== null && (
                 <Text style={styles.generateError}>{generateError}</Text>
               )}
             </View>
@@ -464,6 +481,20 @@ const styles = StyleSheet.create({
   },
   generateSection: {
     gap: spacing.xs,
+  },
+  generatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 12,
+  },
+  generatingText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.accent,
+    fontWeight: typography.fontWeights.medium,
   },
   generateHint: {
     fontSize: typography.fontSizes.xs,
