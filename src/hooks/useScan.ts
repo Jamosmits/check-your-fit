@@ -3,9 +3,7 @@ import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
-import { removeBackground } from '@/services/removeBgService';
-import { smartCropGarment } from '@/services/cropService';
-import { generateProductPhoto } from '@/services/dalleEditService';
+import { generateProductPhoto } from '@/services/productPhotoService';
 
 export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
 export type ScanMode  = 'wardrobe' | 'single';
@@ -42,9 +40,8 @@ interface UseScanReturn {
 const PROCESSING_LABELS = [
   'Kledingkast analyseren...',
   'Items herkennen...',
-  'Achtergronden verwijderen...',
-  'Uitsnijden en centreren...',
-  'Productfoto genereren...',
+  'Item beschrijven...',
+  'Productfoto genereren... ±15 sec',
   'Kleuren bepalen...',
   'Stijlen classificeren...',
 ];
@@ -53,7 +50,6 @@ export function useScan(): UseScanReturn {
   const addItem     = useWardrobeStore((s) => s.addItem);
   const userId      = useAuthStore((s) => s.user?.id ?? 'local');
   const openaiKey   = useSettingsStore((s) => s.openaiKey);
-  const removeBgKey = useSettingsStore((s) => s.removeBgKey);
 
   const [scanState,       setScanState]      = useState<ScanState>('INTRO');
   const [scanMode,        setScanMode]       = useState<ScanMode>('wardrobe');
@@ -96,17 +92,11 @@ export function useScan(): UseScanReturn {
       const isSingle  = scanMode === 'single';
       const sourceUri = uris[uris.length - 1];
 
-      // Step 1 — OpenAI herkenning
+      // Step 1 — OpenAI herkenning: categorie, kleuren, stijl
       const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle);
 
-      // Step 2 — Remove.bg: achtergrond weg, wit, gecropped (server-side)
-      const bgRemovedUri = await removeBackground(sourceUri, removeBgKey);
-
-      // Step 3 — Auto-crop: hanger weg, resize
-      const croppedUri = await smartCropGarment(bgRemovedUri);
-
-      // Step 4 — DALL-E 2: ghost mannequin productfoto (valt terug op cropped als geen key)
-      const finalUri = await generateProductPhoto(croppedUri, openaiKey);
+      // Step 2 — GPT-4o Vision beschrijft het item, DALL-E 3 genereert productfoto
+      const finalUri = await generateProductPhoto(sourceUri, openaiKey);
 
       const items: ReviewItem[] = detected.map((d) => ({
         ...d,
@@ -125,7 +115,7 @@ export function useScan(): UseScanReturn {
       setError(err instanceof Error ? err.message : 'Analyse mislukt. Probeer opnieuw.');
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, removeBgKey, startLabelCycle, stopLabelCycle]);
+  }, [scanMode, openaiKey, startLabelCycle, stopLabelCycle]);
 
   const acceptItem = useCallback((id: string) => {
     setReviewItems((prev) =>
