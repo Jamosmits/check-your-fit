@@ -237,7 +237,10 @@ export function Sidebar({ isOpen, onClose, activeRoute }: SidebarProps) {
             <View style={styles.bottomActions}>
               <TouchableOpacity
                 style={styles.settingsRow}
-                onPress={() => handleNavPress('/(app)/home')}
+                onPress={() => {
+                  close();
+                  setTimeout(() => router.push('/(app)/profile/settings'), 300);
+                }}
                 activeOpacity={0.7}
               >
                 <Ionicons name="settings-outline" size={20} color={colors.textSecondary} />
