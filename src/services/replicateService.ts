@@ -5,55 +5,23 @@ import {
 } from 'expo-file-system/legacy';
 
 const POLL_INTERVAL_MS = 3000;
-const MAX_POLLS = 40; // ~2 minute timeout
+const MAX_POLLS = 40; // ~2-minute timeout
 
-type GhostCategory = 0 | 1 | 2; // 0=upper body, 1=lower body, 2=dress
+export type GhostCategory = 0 | 1 | 2; // 0=upper body, 1=lower body, 2=dress
 
-/**
- * Uploads a local image file to Replicate's file storage.
- * Returns the hosted URL, or null on failure.
- */
-async function uploadToReplicate(imageUri: string, apiKey: string): Promise<string | null> {
-  const base64 = await readAsStringAsync(imageUri, { encoding: 'base64' });
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  // Decode base64 → Uint8Array for binary upload
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  const res = await fetch('https://api.replicate.com/v1/files', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'image/jpeg',
-      'Content-Disposition': 'attachment; filename="clothing.jpg"',
-    },
-    body: bytes.buffer as ArrayBuffer,
-  });
-
-  if (!res.ok) {
-    console.warn('Replicate file upload failed', res.status, await res.text().catch(() => ''));
-    return null;
-  }
-
-  const data = (await res.json()) as { urls?: { get?: string } };
-  return data.urls?.get ?? null;
-}
-
-/** Polls a Replicate prediction until it succeeds, fails, or times out. */
+/** Polls a Replicate prediction until succeeded / failed / timed out. */
 async function pollPrediction(predictionId: string, apiKey: string): Promise<string | null> {
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
 
     const res = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { Authorization: `Token ${apiKey}` },
     });
-
     if (!res.ok) return null;
 
-    const pred = (await res.json()) as { status: string; output?: unknown };
+    const pred = (await res.json()) as { status: string; output?: unknown; error?: string };
 
     if (pred.status === 'succeeded') {
       const out = pred.output;
@@ -61,44 +29,142 @@ async function pollPrediction(predictionId: string, apiKey: string): Promise<str
       if (typeof out === 'string') return out;
       return null;
     }
-
-    if (pred.status === 'failed' || pred.status === 'canceled') return null;
+    if (pred.status === 'failed' || pred.status === 'canceled') {
+      console.warn('Replicate prediction failed:', pred.error);
+      return null;
+    }
   }
-
-  return null; // timed out
+  console.warn('Replicate prediction timed out');
+  return null;
 }
 
-/** Downloads an image from a URL and saves it to the local cache. */
-async function downloadToCache(url: string): Promise<string | null> {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-
-  const buffer = await res.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  bytes.forEach((b) => { binary += String.fromCharCode(b); });
-  const base64 = btoa(binary);
-
-  const dest = `${cacheDirectory}gmk-${Date.now()}.jpg`;
-  await writeAsStringAsync(dest, base64, { encoding: 'base64' });
-  return dest;
+/** Resolves a prediction response to the final output URL, polling if needed. */
+async function resolveOutput(pred: {
+  id: string;
+  status: string;
+  output?: unknown;
+}, apiKey: string): Promise<string | null> {
+  if (pred.status === 'succeeded') {
+    const out = pred.output;
+    if (Array.isArray(out) && out.length > 0) return out[0] as string;
+    if (typeof out === 'string') return out;
+    return null;
+  }
+  if (pred.id && pred.status !== 'failed' && pred.status !== 'canceled') {
+    return pollPrediction(pred.id, apiKey);
+  }
+  return null;
 }
+
+/** Fetches a remote image URL and saves it to the local cache. Returns null on error. */
+async function downloadToCache(url: string, prefix: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    bytes.forEach((b) => { binary += String.fromCharCode(b); });
+    const base64 = btoa(binary);
+
+    const dest = `${cacheDirectory}${prefix}-${Date.now()}.jpg`;
+    await writeAsStringAsync(dest, base64, { encoding: 'base64' });
+    return dest;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Primary model: OOTDiffusion ─────────────────────────────────────────────
 
 /**
- * Generates a ghost mannequin / virtual try-on version of a clothing item
- * using OOTDiffusion on Replicate (levihsu/ootdiffusion).
+ * Attempts ghost mannequin via levihsu/OOTDiffusion.
+ *
+ * Sends the bg-removed clothing photo as a base64 data URI.
+ * OOTDiffusion's `category` param: 0=upper, 1=lower, 2=dress.
+ * Returns the Replicate output URL, or null if the call fails.
+ */
+async function tryOOTDiffusion(
+  imageBase64: string,
+  apiKey: string,
+  category: GhostCategory,
+): Promise<string | null> {
+  const res = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'wait=5',
+    },
+    body: JSON.stringify({
+      model: 'levihsu/ootdiffusion',
+      input: {
+        model_type: 'dc',
+        category,
+        cloth_image: `data:image/jpeg;base64,${imageBase64}`,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    console.warn('OOTDiffusion error:', res.status, await res.text().catch(() => ''));
+    return null;
+  }
+
+  const pred = (await res.json()) as { id: string; status: string; output?: unknown };
+  return resolveOutput(pred, apiKey);
+}
+
+// ─── Fallback model: garment-to-product-image ────────────────────────────────
+
+/**
+ * Fallback: viktorfa/garment-to-product-image.
+ * Converts a garment photo to a clean product-style image.
+ */
+async function tryGarmentToProduct(
+  imageBase64: string,
+  apiKey: string,
+): Promise<string | null> {
+  const res = await fetch('https://api.replicate.com/v1/predictions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'wait=5',
+    },
+    body: JSON.stringify({
+      model: 'viktorfa/garment-to-product-image',
+      input: {
+        garment_image: `data:image/jpeg;base64,${imageBase64}`,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    console.warn('garment-to-product error:', res.status, await res.text().catch(() => ''));
+    return null;
+  }
+
+  const pred = (await res.json()) as { id: string; status: string; output?: unknown };
+  return resolveOutput(pred, apiKey);
+}
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+/**
+ * Generates a ghost mannequin / product photo from a bg-removed clothing image.
  *
  * Flow:
- *   1. Upload the bg-removed clothing image to Replicate's file storage
- *   2. Submit a prediction to OOTDiffusion
- *   3. Poll until done (up to ~2 minutes)
- *   4. Download the output to local cache
+ *   1. Read the local file as base64
+ *   2. Try OOTDiffusion (levihsu/ootdiffusion)
+ *   3. On failure, try garment-to-product-image (viktorfa)
+ *   4. Download the result to local cache for persistence
+ *   5. Fall back to the input imageUri if both models fail
  *
- * Falls back to the original imageUri on any error or if no API key.
- *
- * @param imageUri   Local file URI of the bg-removed clothing photo
- * @param apiKey     Replicate API token
- * @param category   0=upper body, 1=lower body, 2=dress
+ * @param imageUri  Local file URI of the bg-removed clothing photo
+ * @param apiKey    Replicate API token (r8_...)
+ * @param category  0=upper body, 1=lower body, 2=dress
  */
 export async function applyGhostMannequin(
   imageUri: string,
@@ -108,57 +174,27 @@ export async function applyGhostMannequin(
   if (!apiKey) return imageUri;
 
   try {
-    // 1. Upload the image so Replicate can fetch it
-    const fileUrl = await uploadToReplicate(imageUri, apiKey);
-    if (!fileUrl) return imageUri;
+    const imageBase64 = await readAsStringAsync(imageUri, { encoding: 'base64' });
 
-    // 2. Create OOTDiffusion prediction
-    const res = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        // Ask Replicate to wait up to 5 s before switching to async polling
-        Prefer: 'wait=5',
-      },
-      body: JSON.stringify({
-        model: 'levihsu/ootdiffusion',
-        input: {
-          model_type: 'dc',
-          category,
-          cloth_image: fileUrl,
-        },
-      }),
-    });
+    // Try primary model first
+    let outputUrl = await tryOOTDiffusion(imageBase64, apiKey, category);
 
-    if (!res.ok) {
-      console.warn('Replicate prediction error', res.status, await res.text().catch(() => ''));
+    // Fall back to secondary model
+    if (!outputUrl) {
+      console.warn('OOTDiffusion failed or returned nothing — trying fallback model');
+      outputUrl = await tryGarmentToProduct(imageBase64, apiKey);
+    }
+
+    if (!outputUrl) {
+      console.warn('All ghost mannequin models failed — using bg-removed image');
       return imageUri;
     }
 
-    const pred = (await res.json()) as { id: string; status: string; output?: unknown };
-
-    // 3. Resolve output URL (may already be ready if Replicate responded synchronously)
-    let outputUrl: string | null = null;
-
-    if (pred.status === 'succeeded') {
-      const out = pred.output;
-      outputUrl = Array.isArray(out)
-        ? (out[0] as string)
-        : typeof out === 'string'
-          ? out
-          : null;
-    } else if (pred.id && pred.status !== 'failed' && pred.status !== 'canceled') {
-      outputUrl = await pollPrediction(pred.id, apiKey);
-    }
-
-    if (!outputUrl) return imageUri;
-
-    // 4. Download the result to local cache for persistence
-    const localUri = await downloadToCache(outputUrl);
+    // Download to local cache so the URL stays valid after Replicate's expiry window
+    const localUri = await downloadToCache(outputUrl, 'gmk');
     return localUri ?? imageUri;
   } catch (e) {
-    console.warn('Ghost mannequin exception', e);
+    console.warn('applyGhostMannequin exception:', e);
     return imageUri;
   }
 }

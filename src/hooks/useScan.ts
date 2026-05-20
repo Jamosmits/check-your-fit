@@ -42,6 +42,7 @@ const PROCESSING_LABELS = [
   'Kledingkast analyseren...',
   'Items herkennen...',
   'Achtergronden verwijderen...',
+  'Ghost mannequin genereren...',
   'Catalogiseren...',
   'Kleuren bepalen...',
   'Stijlen classificeren...',
