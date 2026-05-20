@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 import { ClothingItem } from '@/store/wardrobeStore';
 
 export interface DetectedItem {
@@ -26,9 +26,7 @@ const MOCK_ITEMS: DetectedItem[] = [
 ];
 
 async function toBase64(uri: string): Promise<string> {
-  return FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  return readAsStringAsync(uri, { encoding: 'base64' });
 }
 
 function parseGptResponse(text: string): DetectedItem[] {

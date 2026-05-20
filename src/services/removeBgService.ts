@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
 
 /**
  * Removes background from an image using the remove.bg API.
@@ -36,10 +36,8 @@ export async function removeBackground(
     bytes.forEach((b) => { binary += String.fromCharCode(b); });
     const base64 = btoa(binary);
 
-    const dest = `${FileSystem.cacheDirectory}rbg-${Date.now()}.png`;
-    await FileSystem.writeAsStringAsync(dest, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    const dest = `${cacheDirectory}rbg-${Date.now()}.png`;
+    await writeAsStringAsync(dest, base64, { encoding: 'base64' });
     return dest;
   } catch {
     return imageUri;
