@@ -54,7 +54,7 @@ export default function RegisterScreen() {
         { name: name.trim(), email: email.trim().toLowerCase(), password, gender },
       );
       await setAuth(response.data.user, response.data.token);
-      router.replace('/(auth)/household-setup');
+      router.replace('/(auth)/body-photo');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number } };
       if (axiosErr?.response?.status === 409) {

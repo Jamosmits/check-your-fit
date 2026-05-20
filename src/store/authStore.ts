@@ -14,15 +14,16 @@ interface AuthState {
   isDemo: boolean;
   isLoading: boolean;
   bodyPhotoUri: string | null;
-  setBodyPhoto: (uri: string | null) => void;
+  setBodyPhoto: (uri: string | null) => Promise<void>;
   setAuth: (user: User, token: string) => Promise<void>;
   loginAsDemo: () => void;
   logout: () => Promise<void>;
   loadFromStorage: () => Promise<void>;
 }
 
-const TOKEN_KEY = 'auth_token';
-const USER_KEY = 'auth_user';
+const TOKEN_KEY      = 'auth_token';
+const USER_KEY       = 'auth_user';
+const BODY_PHOTO_KEY = 'body_photo_uri';
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -31,7 +32,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: true,
   bodyPhotoUri: null,
 
-  setBodyPhoto: (uri) => set({ bodyPhotoUri: uri }),
+  setBodyPhoto: async (uri) => {
+    if (uri) {
+      await SecureStore.setItemAsync(BODY_PHOTO_KEY, uri).catch(() => {});
+    } else {
+      await SecureStore.deleteItemAsync(BODY_PHOTO_KEY).catch(() => {});
+    }
+    set({ bodyPhotoUri: uri });
+  },
 
   setAuth: async (user: User, token: string) => {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
@@ -71,13 +79,16 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadFromStorage: async () => {
     try {
-      const token = await SecureStore.getItemAsync(TOKEN_KEY);
-      const userJson = await SecureStore.getItemAsync(USER_KEY);
+      const [token, userJson, bodyPhoto] = await Promise.all([
+        SecureStore.getItemAsync(TOKEN_KEY).catch(() => null),
+        SecureStore.getItemAsync(USER_KEY).catch(() => null),
+        SecureStore.getItemAsync(BODY_PHOTO_KEY).catch(() => null),
+      ]);
       if (token && userJson) {
         const user = JSON.parse(userJson) as User;
-        set({ user, token, isLoading: false });
+        set({ user, token, isLoading: false, bodyPhotoUri: bodyPhoto ?? null });
       } else {
-        set({ isLoading: false });
+        set({ isLoading: false, bodyPhotoUri: bodyPhoto ?? null });
       }
     } catch {
       set({ isLoading: false });
