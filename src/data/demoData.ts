@@ -13,12 +13,15 @@ export const DEMO_USER: User = {
 const now = new Date().toISOString();
 const daysAgo = (d: number) => new Date(Date.now() - d * 86400000).toISOString();
 
-// All imageUrls point to clean Unsplash product-style fashion photos
+// Imgix params: fit=pad pads the image to 3:4 with a white bg — product-photo look
+const img = (id: string) =>
+  `https://images.unsplash.com/${id}?w=400&h=533&fit=pad&bg=ffffff&q=80&auto=format`;
+
 export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-1',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1598033129183-c4f50c736f10'),
     category: 'tops',
     subcategory: 'Oxford overhemd',
     brand: 'COS',
@@ -33,7 +36,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-2',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1583743814966-8936f5b7be1a'),
     category: 'tops',
     subcategory: 'Wit T-shirt',
     brand: 'Uniqlo',
@@ -48,7 +51,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-3',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1434389677669-e08b4cac3105'),
     category: 'tops',
     subcategory: 'Crew neck sweater',
     brand: 'Arket',
@@ -63,7 +66,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-4',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1542272604-787c3835535d'),
     category: 'bottoms',
     subcategory: 'Slim jeans',
     brand: "Levi's",
@@ -78,7 +81,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-5',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1473966968600-fa801b869a1a'),
     category: 'bottoms',
     subcategory: 'Chino',
     brand: 'Gap',
@@ -93,7 +96,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-6',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1506629082955-511b1aa562c8'),
     category: 'bottoms',
     subcategory: 'Zwarte pantalon',
     brand: 'Zara',
@@ -108,7 +111,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-7',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1548126032-079a0fb0099d?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1548126032-079a0fb0099d'),
     category: 'outerwear',
     subcategory: 'Blazer',
     brand: 'H&M',
@@ -123,7 +126,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-8',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1539533018447-63fcce2678e3'),
     category: 'outerwear',
     subcategory: 'Trenchcoat',
     brand: 'Mango',
@@ -138,7 +141,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-9',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1542291026-7eec264c27ff'),
     category: 'shoes',
     subcategory: 'Witte sneakers',
     brand: 'Nike',
@@ -153,7 +156,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-10',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1608256246200-c7b5e7b8e4f3?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1608256246200-c7b5e7b8e4f3'),
     category: 'shoes',
     subcategory: 'Chelsea boots',
     brand: 'Vagabond',
@@ -168,7 +171,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-11',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1523170335258-f5ed11844a49'),
     category: 'accessories',
     subcategory: 'Horloge',
     brand: 'Casio',
@@ -183,7 +186,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-12',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1585386959984-a4155224a1ad?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1585386959984-a4155224a1ad'),
     category: 'accessories',
     subcategory: 'Parfum',
     brand: 'Dior',
@@ -198,7 +201,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-13',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1539109136881-3be0616acf4b'),
     category: 'dresses',
     subcategory: 'Midi jurk',
     brand: 'Zara',
@@ -213,7 +216,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-14',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1572804013309-59a88b7e92f1'),
     category: 'dresses',
     subcategory: 'Zomerjurk',
     brand: 'H&M',
@@ -228,7 +231,7 @@ export const DEMO_ITEMS: ClothingItem[] = [
   {
     id: 'demo-15',
     userId: 'demo-user',
-    imageUrl: 'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=400&q=80&fit=crop',
+    imageUrl: img('photo-1620799140408-edc6dcb6d633'),
     category: 'tops',
     subcategory: 'Gestreept shirt',
     brand: 'Tommy Hilfiger',

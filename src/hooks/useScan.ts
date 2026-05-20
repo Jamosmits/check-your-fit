@@ -95,22 +95,17 @@ export function useScan(): UseScanReturn {
       // 1. Analyse via OpenAI (of mock)
       const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle);
 
-      // 2. Voor elk gedetecteerd item: achtergrond verwijderen
-      //    We gebruiken de eerste capture als bron; bij multi-frame de beste
+      // 2. Achtergrond verwijderen — één API-call per opname, gedeeld door alle items
       const sourceUri = uris[uris.length - 1];
+      const processedUri = await removeBackground(sourceUri, removeBgKey);
 
-      const items = await Promise.all(
-        detected.map(async (d): Promise<ReviewItem> => {
-          const processedUri = await removeBackground(sourceUri, removeBgKey);
-          return {
-            ...d,
-            id:          makeId(),
-            originalUri: sourceUri,
-            imageUri:    processedUri,
-            accepted:    null,
-          };
-        }),
-      );
+      const items: ReviewItem[] = detected.map((d) => ({
+        ...d,
+        id:          makeId(),
+        originalUri: sourceUri,
+        imageUri:    processedUri,
+        accepted:    null,
+      }));
 
       stopLabelCycle();
       setReviewItems(items);

@@ -2,8 +2,9 @@ import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
 
 /**
  * Removes background from an image using the remove.bg API.
- * Falls back to the original URI if no API key is provided.
- * Returns a local file URI to the processed image.
+ * Requests a white (#ffffff) background so the result works everywhere.
+ * Falls back to the original URI if no API key is provided or on any error.
+ * Returns a local file URI to the processed JPEG.
  */
 export async function removeBackground(
   imageUri: string,
@@ -19,7 +20,9 @@ export async function removeBackground(
       type: 'image/jpeg',
     } as unknown as Blob);
     formData.append('size', 'auto');
-    formData.append('format', 'png');
+    // Request white background so the image is ready to use without compositing
+    formData.append('bg_color', 'ffffff');
+    formData.append('format', 'jpg');
 
     const res = await fetch('https://api.remove.bg/v1.0/removebg', {
       method: 'POST',
@@ -27,19 +30,23 @@ export async function removeBackground(
       body: formData,
     });
 
-    if (!res.ok) return imageUri;
+    if (!res.ok) {
+      console.warn('remove.bg error', res.status, await res.text().catch(() => ''));
+      return imageUri;
+    }
 
-    // Save the returned PNG to a local cache file
+    // Save the returned JPEG to a local cache file
     const arrayBuffer = await res.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
     let binary = '';
     bytes.forEach((b) => { binary += String.fromCharCode(b); });
     const base64 = btoa(binary);
 
-    const dest = `${cacheDirectory}rbg-${Date.now()}.png`;
+    const dest = `${cacheDirectory}rbg-${Date.now()}.jpg`;
     await writeAsStringAsync(dest, base64, { encoding: 'base64' });
     return dest;
-  } catch {
+  } catch (e) {
+    console.warn('remove.bg exception', e);
     return imageUri;
   }
 }
