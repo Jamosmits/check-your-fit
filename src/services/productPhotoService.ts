@@ -67,11 +67,10 @@ export async function describeClothingItem(imageUri: string, openaiKey: string):
  */
 export async function generateDalle3Photo(description: string, openaiKey: string): Promise<string> {
   const prompt =
-    `Professional high-end fashion e-commerce product photo of a ${description}. ` +
-    'Displayed on invisible ghost mannequin. Pure white background, perfect studio lighting, ' +
-    'sharp crisp edges, no shadows, centered, exactly like Zara or H&M product photos.';
+    `A professional e-commerce clothing product photo, ghost mannequin style, white background, ` +
+    `studio lighting, high quality. Item: ${description}`;
 
-  console.log('[productPhoto] generateDalle3Photo: prompt:', prompt.slice(0, 150), '...');
+  console.log('[productPhoto] generateDalle3Photo prompt:', prompt);
 
   const res = await fetch(OPENAI_IMAGES, {
     method: 'POST',
@@ -89,9 +88,9 @@ export async function generateDalle3Photo(description: string, openaiKey: string
   console.log('[productPhoto] DALL-E 3 status:', res.status);
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    console.error('[productPhoto] DALL-E 3 error body:', errText.slice(0, 400));
-    throw new Error(`DALL-E 3 error ${res.status}: ${errText.slice(0, 200)}`);
+    const errText = await res.text().catch(() => '<unreadable>');
+    console.error('[productPhoto] DALL-E 3 full error response:', errText);
+    throw new Error(`DALL-E 3 ${res.status}: ${errText.slice(0, 300)}`);
   }
 
   const json = (await res.json()) as { data: { b64_json: string }[] };
