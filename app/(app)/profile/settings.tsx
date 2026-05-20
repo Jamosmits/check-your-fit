@@ -165,8 +165,11 @@ export default function SettingsScreen() {
   const { t, locale, setLocale } = useTranslation();
   const logout = useAuthStore((s) => s.logout);
 
-  const { openaiKey, removeBgKey, isLoaded, loadKeys, setOpenaiKey, setRemoveBgKey } =
-    useSettingsStore();
+  const {
+    openaiKey, removeBgKey, replicateKey,
+    isLoaded, loadKeys,
+    setOpenaiKey, setRemoveBgKey, setReplicateKey,
+  } = useSettingsStore();
 
   const [outfitReminders, setOutfitReminders] = useState(false);
   const [marketingNotifs, setMarketingNotifs] = useState(false);
@@ -306,7 +309,15 @@ export default function SettingsScreen() {
           placeholder="Plak je Remove.bg sleutel"
           value={removeBgKey}
           onSave={setRemoveBgKey}
-          helpText="Gratis key op remove.bg — 50 foto's/maand gratis. Zorgt voor professionele productfoto's met witte achtergrond."
+          helpText="Gratis key op remove.bg — 50 foto's/maand gratis. Verwijdert achtergrond na elke scan."
+        />
+        <View style={styles.divider} />
+        <ApiKeyInput
+          label="Replicate API-sleutel"
+          placeholder="r8_..."
+          value={replicateKey}
+          onSave={setReplicateKey}
+          helpText="Gratis tier op replicate.com. Genereert een ghost mannequin productfoto (item ziet er gedragen uit, zonder zichtbare persoon) na elke scan."
         />
       </Card>
 

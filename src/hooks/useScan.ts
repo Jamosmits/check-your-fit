@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
 import { removeBackground } from '@/services/removeBgService';
+import { applyGhostMannequin } from '@/services/replicateService';
 
 export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
 export type ScanMode  = 'wardrobe' | 'single';
@@ -51,6 +52,7 @@ export function useScan(): UseScanReturn {
   const userId         = useAuthStore((s) => s.user?.id ?? 'local');
   const openaiKey      = useSettingsStore((s) => s.openaiKey);
   const removeBgKey    = useSettingsStore((s) => s.removeBgKey);
+  const replicateKey   = useSettingsStore((s) => s.replicateKey);
 
   const [scanState,       setScanState]       = useState<ScanState>('INTRO');
   const [scanMode,        setScanMode]         = useState<ScanMode>('wardrobe');
@@ -95,15 +97,31 @@ export function useScan(): UseScanReturn {
       // 1. Analyse via OpenAI (of mock)
       const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle);
 
-      // 2. Achtergrond verwijderen — één API-call per opname, gedeeld door alle items
+      // 2. Achtergrond verwijderen — één API-call per opname
       const sourceUri = uris[uris.length - 1];
-      const processedUri = await removeBackground(sourceUri, removeBgKey);
+      const bgRemovedUri = await removeBackground(sourceUri, removeBgKey);
+
+      // 3. Ghost mannequin via Replicate (alleen bij single-item modus, wearable items)
+      let finalUri = bgRemovedUri;
+      if (isSingle && replicateKey && detected.length > 0) {
+        const cat = detected[0].category;
+        const mannequinCat =
+          cat === 'bottoms'   ? 1 :
+          cat === 'dresses'   ? 2 :
+          (cat === 'tops' || cat === 'outerwear') ? 0 : -1;
+
+        if (mannequinCat !== -1) {
+          finalUri = await applyGhostMannequin(
+            bgRemovedUri, replicateKey, mannequinCat as 0 | 1 | 2,
+          );
+        }
+      }
 
       const items: ReviewItem[] = detected.map((d) => ({
         ...d,
         id:          makeId(),
         originalUri: sourceUri,
-        imageUri:    processedUri,
+        imageUri:    finalUri,
         accepted:    null,
       }));
 
@@ -116,7 +134,7 @@ export function useScan(): UseScanReturn {
       setError(err instanceof Error ? err.message : 'Analyse mislukt. Probeer opnieuw.');
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, removeBgKey, startLabelCycle, stopLabelCycle]);
+  }, [scanMode, openaiKey, removeBgKey, replicateKey, startLabelCycle, stopLabelCycle]);
 
   const acceptItem = useCallback((id: string) => {
     setReviewItems((prev) =>
