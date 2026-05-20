@@ -107,10 +107,11 @@ function ItemThumb({
   selected: boolean;
   onPress: () => void;
 }) {
+  const uri = item.processedPhotoUrl ?? item.imageUrl;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={thumbS.wrap}>
       <View style={[thumbS.frame, selected && thumbS.frameSelected]}>
-        <Image source={{ uri: item.imageUrl }} style={thumbS.image} resizeMode="contain" />
+        <Image source={{ uri }} style={thumbS.image} resizeMode="contain" />
         {selected && (
           <View style={thumbS.checkBadge}>
             <Ionicons name="checkmark" size={10} color={colors.white} />
@@ -295,6 +296,12 @@ export default function TryOnScreen() {
     return map;
   }, [items]);
 
+  // Use processed photo when available for both thumbnails and model overlays
+  const photoUri = useCallback(
+    (item: ClothingItem) => item.processedPhotoUrl ?? item.imageUrl,
+    [],
+  );
+
   const handleSelect = useCallback((item: ClothingItem) => {
     setSelected((prev) => {
       // Tapping the already-selected item deselects it
@@ -361,7 +368,7 @@ export default function TryOnScreen() {
           return (
             <Image
               key={cat}
-              source={{ uri: item.imageUrl }}
+              source={{ uri: photoUri(item) }}
               style={[
                 s.overlay,
                 {

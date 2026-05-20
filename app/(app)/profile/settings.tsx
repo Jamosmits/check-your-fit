@@ -306,7 +306,7 @@ export default function SettingsScreen() {
           placeholder="Plak je Remove.bg sleutel"
           value={removeBgKey}
           onSave={setRemoveBgKey}
-          helpText="Optioneel — verwijdert achtergronden van kleding. Gratis plan beschikbaar op remove.bg."
+          helpText="Gratis key op remove.bg — 50 foto's/maand gratis. Zorgt voor professionele productfoto's met witte achtergrond."
         />
       </Card>
 

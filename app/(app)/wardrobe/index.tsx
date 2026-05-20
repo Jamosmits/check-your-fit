@@ -17,6 +17,7 @@ import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/i18n';
 import { useWardrobeItems, useDeleteWardrobeItem, useMarkWorn } from '@/hooks/useWardrobe';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { ClothingCard } from '@/components/wardrobe/ClothingCard';
 import { FilterBar } from '@/components/wardrobe/FilterBar';
 import { Input } from '@/components/ui/Input';
@@ -54,6 +55,9 @@ export default function WardrobeIndexScreen() {
 
   const { isLoading, error, refetch } = useWardrobeItems(filters);
   const items = useWardrobeStore((s) => s.items);
+  const removeBgKey = useSettingsStore((s) => s.removeBgKey);
+  const [removeBgBannerDismissed, setRemoveBgBannerDismissed] = useState(false);
+  const showRemoveBgBanner = !removeBgKey && items.length > 0 && !removeBgBannerDismissed;
   const { mutate: deleteItem } = useDeleteWardrobeItem();
   const { mutate: markWorn } = useMarkWorn();
 
@@ -207,6 +211,26 @@ export default function WardrobeIndexScreen() {
             </TouchableOpacity>
           ))}
         </View>
+      )}
+
+      {/* Remove.bg tip banner */}
+      {showRemoveBgBanner && (
+        <TouchableOpacity
+          style={styles.tipBanner}
+          onPress={() => router.push('/(app)/profile/settings')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="sparkles-outline" size={14} color={colors.status.info} />
+          <Text style={styles.tipBannerText}>
+            Voeg Remove.bg key toe voor professionele productfoto's
+          </Text>
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation(); setRemoveBgBannerDismissed(true); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close" size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+        </TouchableOpacity>
       )}
 
       {/* Content */}
@@ -397,6 +421,23 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     width: '100%',
     marginTop: spacing.sm,
+  },
+  tipBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.screen,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.status.infoLight,
+    borderRadius: 10,
+  },
+  tipBannerText: {
+    flex: 1,
+    fontSize: typography.fontSizes.xs,
+    color: colors.status.info,
+    fontWeight: typography.fontWeights.medium,
   },
   fab: {
     position: 'absolute',

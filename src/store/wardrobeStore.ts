@@ -6,6 +6,7 @@ export interface ClothingItem {
   householdId?: string;
   imageUrl: string;
   thumbnailUrl?: string;
+  processedPhotoUrl?: string;  // bg-removed PNG from remove.bg
   category: 'tops' | 'bottoms' | 'outerwear' | 'shoes' | 'accessories' | 'dresses';
   subcategory?: string;
   brand?: string;

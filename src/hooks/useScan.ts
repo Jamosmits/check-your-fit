@@ -9,9 +9,10 @@ export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE
 export type ScanMode  = 'wardrobe' | 'single';
 
 export interface ReviewItem extends DetectedItem {
-  id:        string;
-  imageUri:  string;  // local URI (possibly bg-removed)
-  accepted:  boolean | null;  // null = undecided
+  id:          string;
+  originalUri: string;   // raw camera capture
+  imageUri:    string;   // bg-removed PNG (or same as originalUri if no key)
+  accepted:    boolean | null;
 }
 
 function makeId() {
@@ -103,9 +104,10 @@ export function useScan(): UseScanReturn {
           const processedUri = await removeBackground(sourceUri, removeBgKey);
           return {
             ...d,
-            id:       makeId(),
-            imageUri: processedUri,
-            accepted: null,
+            id:          makeId(),
+            originalUri: sourceUri,
+            imageUri:    processedUri,
+            accepted:    null,
           };
         }),
       );
@@ -145,20 +147,22 @@ export function useScan(): UseScanReturn {
     const toAdd = reviewItems.filter((item) => item.accepted !== false);
 
     toAdd.forEach((item) => {
+      const bgRemoved = item.imageUri !== item.originalUri;
       const newItem: ClothingItem = {
-        id:          makeId(),
+        id:                makeId(),
         userId,
-        imageUrl:    item.imageUri,
-        category:    item.category,
-        subcategory: item.subcategory,
-        brand:       item.brand ?? undefined,
-        colors:      item.colors,
-        color:       item.colorNames[0],
-        season:      item.season,
-        notes:       item.styleTags.join(', '),
-        timesWorn:   0,
-        createdAt:   now,
-        updatedAt:   now,
+        imageUrl:          item.imageUri,
+        processedPhotoUrl: bgRemoved ? item.imageUri : undefined,
+        category:          item.category,
+        subcategory:       item.subcategory,
+        brand:             item.brand ?? undefined,
+        colors:            item.colors,
+        color:             item.colorNames[0],
+        season:            item.season,
+        notes:             item.styleTags.join(', '),
+        timesWorn:         0,
+        createdAt:         now,
+        updatedAt:         now,
       };
       addItem(newItem);
     });

@@ -86,8 +86,8 @@ export function ClothingCard({ item, onPress, onDelete, onMarkWorn }: ClothingCa
     );
   }, [item, onDelete, onMarkWorn, t]);
 
-  const categoryKey = item.category as keyof typeof colors.tag;
   const colorDot = item.color ?? (item.colors?.[0]);
+  const photoUri = item.processedPhotoUrl ?? item.imageUrl;
 
   return (
     <AnimatedTouchable
@@ -101,7 +101,7 @@ export function ClothingCard({ item, onPress, onDelete, onMarkWorn }: ClothingCa
     >
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: item.imageUrl }}
+          source={{ uri: photoUri }}
           style={styles.image}
           resizeMode="contain"
         />
@@ -122,26 +122,27 @@ export function ClothingCard({ item, onPress, onDelete, onMarkWorn }: ClothingCa
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 16,
+    borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: colors.surface,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
   imageContainer: {
     aspectRatio: 3 / 4,
     position: 'relative',
+    backgroundColor: '#FFFFFF',
   },
   image: {
     width: '100%',
