@@ -5,15 +5,14 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
 import { removeBackground } from '@/services/removeBgService';
 import { smartCropGarment } from '@/services/cropService';
-import { applyGhostMannequin } from '@/services/replicateService';
 
 export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
 export type ScanMode  = 'wardrobe' | 'single';
 
 export interface ReviewItem extends DetectedItem {
   id:          string;
-  originalUri: string;   // raw camera capture
-  imageUri:    string;   // bg-removed PNG (or same as originalUri if no key)
+  originalUri: string; // raw camera capture
+  imageUri:    string; // bg-removed + cropped (or same as originalUri if no key)
   accepted:    boolean | null;
 }
 
@@ -22,47 +21,45 @@ function makeId() {
 }
 
 interface UseScanReturn {
-  scanState:    ScanState;
-  scanMode:     ScanMode;
-  reviewItems:  ReviewItem[];
-  currentIndex: number;
+  scanState:       ScanState;
+  scanMode:        ScanMode;
+  reviewItems:     ReviewItem[];
+  currentIndex:    number;
   processingLabel: string;
-  error:        string | null;
-  addedCount:   number;
+  error:           string | null;
+  addedCount:      number;
 
-  startScan:      (mode: ScanMode) => void;
-  finishCapture:  (uris: string[]) => Promise<void>;
-  acceptItem:     (id: string) => void;
-  rejectItem:     (id: string) => void;
-  acceptAll:      () => void;
-  submitReview:   () => void;
-  reset:          () => void;
+  startScan:     (mode: ScanMode) => void;
+  finishCapture: (uris: string[]) => Promise<void>;
+  acceptItem:    (id: string) => void;
+  rejectItem:    (id: string) => void;
+  acceptAll:     () => void;
+  submitReview:  () => void;
+  reset:         () => void;
 }
 
 const PROCESSING_LABELS = [
   'Kledingkast analyseren...',
   'Items herkennen...',
   'Achtergronden verwijderen...',
-  'Ghost mannequin genereren...',
-  'Catalogiseren...',
+  'Uitsnijden en centreren...',
   'Kleuren bepalen...',
   'Stijlen classificeren...',
 ];
 
 export function useScan(): UseScanReturn {
-  const addItem        = useWardrobeStore((s) => s.addItem);
-  const userId         = useAuthStore((s) => s.user?.id ?? 'local');
-  const openaiKey      = useSettingsStore((s) => s.openaiKey);
-  const removeBgKey    = useSettingsStore((s) => s.removeBgKey);
-  const replicateKey   = useSettingsStore((s) => s.replicateKey);
+  const addItem     = useWardrobeStore((s) => s.addItem);
+  const userId      = useAuthStore((s) => s.user?.id ?? 'local');
+  const openaiKey   = useSettingsStore((s) => s.openaiKey);
+  const removeBgKey = useSettingsStore((s) => s.removeBgKey);
 
-  const [scanState,       setScanState]       = useState<ScanState>('INTRO');
-  const [scanMode,        setScanMode]         = useState<ScanMode>('wardrobe');
-  const [reviewItems,     setReviewItems]      = useState<ReviewItem[]>([]);
-  const [currentIndex,    setCurrentIndex]     = useState(0);
-  const [processingLabel, setProcessingLabel]  = useState(PROCESSING_LABELS[0]);
-  const [error,           setError]            = useState<string | null>(null);
-  const [addedCount,      setAddedCount]       = useState(0);
+  const [scanState,       setScanState]      = useState<ScanState>('INTRO');
+  const [scanMode,        setScanMode]       = useState<ScanMode>('wardrobe');
+  const [reviewItems,     setReviewItems]    = useState<ReviewItem[]>([]);
+  const [currentIndex,    setCurrentIndex]   = useState(0);
+  const [processingLabel, setProcessingLabel] = useState(PROCESSING_LABELS[0]);
+  const [error,           setError]          = useState<string | null>(null);
+  const [addedCount,      setAddedCount]     = useState(0);
   const labelIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startLabelCycle = useCallback(() => {
@@ -94,33 +91,17 @@ export function useScan(): UseScanReturn {
     setError(null);
 
     try {
-      const isSingle = scanMode === 'single';
+      const isSingle  = scanMode === 'single';
+      const sourceUri = uris[uris.length - 1];
 
-      // 1. Analyse via OpenAI (of mock)
+      // Step 1 — OpenAI herkenning
       const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle);
 
-      // 2. Achtergrond verwijderen — één API-call per opname
-      const sourceUri = uris[uris.length - 1];
+      // Step 2 — Remove.bg: achtergrond weg, wit, gecropped (server-side)
       const bgRemovedUri = await removeBackground(sourceUri, removeBgKey);
 
-      // 3. Auto-crop: verwijder witte randen + hanger bovenaan
-      const croppedUri = await smartCropGarment(bgRemovedUri);
-
-      // 4. Ghost mannequin via Replicate (alleen bij single-item modus, wearable items)
-      let finalUri = croppedUri;
-      if (isSingle && replicateKey && detected.length > 0) {
-        const cat = detected[0].category;
-        const mannequinCat =
-          cat === 'bottoms'   ? 1 :
-          cat === 'dresses'   ? 2 :
-          (cat === 'tops' || cat === 'outerwear') ? 0 : -1;
-
-        if (mannequinCat !== -1) {
-          finalUri = await applyGhostMannequin(
-            croppedUri, replicateKey, mannequinCat as 0 | 1 | 2,
-          );
-        }
-      }
+      // Step 3 — Auto-crop: hanger weg, resize
+      const finalUri = await smartCropGarment(bgRemovedUri);
 
       const items: ReviewItem[] = detected.map((d) => ({
         ...d,
@@ -133,13 +114,13 @@ export function useScan(): UseScanReturn {
       stopLabelCycle();
       setReviewItems(items);
       setCurrentIndex(0);
-      setScanState(isSingle && items.length === 1 ? 'REVIEW' : 'REVIEW');
+      setScanState('REVIEW');
     } catch (err) {
       stopLabelCycle();
       setError(err instanceof Error ? err.message : 'Analyse mislukt. Probeer opnieuw.');
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, removeBgKey, replicateKey, startLabelCycle, stopLabelCycle]);
+  }, [scanMode, openaiKey, removeBgKey, startLabelCycle, stopLabelCycle]);
 
   const acceptItem = useCallback((id: string) => {
     setReviewItems((prev) =>
@@ -161,7 +142,7 @@ export function useScan(): UseScanReturn {
   }, [reviewItems.length]);
 
   const submitReview = useCallback(() => {
-    const now = new Date().toISOString();
+    const now   = new Date().toISOString();
     const toAdd = reviewItems.filter((item) => item.accepted !== false);
 
     toAdd.forEach((item) => {

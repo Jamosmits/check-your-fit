@@ -9,12 +9,10 @@ import {
   ScrollView,
   Dimensions,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore } from '@/store/authStore';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
@@ -136,139 +134,6 @@ const flatS = StyleSheet.create({
   },
 });
 
-// ─── BodyPhotoCanvas ─────────────────────────────────────────────────────────
-// Shows the user's own body photo as backdrop and overlays selected garment
-// thumbnails at approximate body zones (torso / legs / feet).
-
-interface ZoneOverlayProps {
-  item: ClothingItem;
-  onDeselect: () => void;
-  style: object;
-}
-
-function ZoneOverlay({ item, onDeselect, style }: ZoneOverlayProps) {
-  const uri = item.processedPhotoUrl ?? item.imageUrl;
-  return (
-    <View style={[zoneS.wrap, style]} pointerEvents="box-none">
-      <Image source={{ uri }} style={zoneS.img} resizeMode="contain" />
-      <TouchableOpacity style={zoneS.removeBtn} onPress={onDeselect} activeOpacity={0.8}>
-        <Ionicons name="close" size={10} color="#fff" />
-      </TouchableOpacity>
-      {item.brand && (
-        <View style={zoneS.tag}>
-          <Text style={zoneS.tagText} numberOfLines={1}>{item.brand}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-const zoneS = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 10,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
-      },
-      android: { elevation: 3 },
-    }),
-  },
-  img:       { width: '100%', height: '100%' },
-  removeBtn: {
-    position: 'absolute',
-    top: 4, right: 4,
-    width: 18, height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  tag: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    paddingVertical: 2,
-  },
-  tagText: {
-    fontSize: 9,
-    color: '#666',
-    textAlign: 'center',
-  },
-});
-
-function BodyPhotoCanvas({
-  bodyPhotoUri,
-  selected,
-  onDeselect,
-}: {
-  bodyPhotoUri: string;
-  selected: Partial<Record<Cat, ClothingItem>>;
-  onDeselect: (cat: Cat) => void;
-}) {
-  const { width: W } = useWindowDimensions();
-  // Canvas height = whatever the flex layout assigns; use W-based sizing for zones
-  const zW = W * 0.38;   // typical zone card width
-  const zX = (W - zW) / 2; // centered X
-
-  // Zone vertical positions as fractions of canvas height — these match an
-  // average standing portrait photo (face at 0-15 %, torso 15-55 %, etc.)
-  const zones = useMemo(() => ({
-    outerwear:   { top: '10%', height: '42%', width: zW * 1.15, left: zX - zW * 0.075 },
-    tops:        { top: '15%', height: '36%', width: zW,        left: zX },
-    dresses:     { top: '15%', height: '58%', width: zW,        left: zX },
-    bottoms:     { top: '50%', height: '30%', width: zW * 0.9,  left: zX + zW * 0.05 },
-    shoes:       { top: '77%', height: '17%', width: zW * 1.1,  left: zX - zW * 0.05 },
-    accessories: { top: '8%',  height: '10%', width: zW * 0.55, left: W * 0.68 },
-  }), [zW, zX, W]);
-
-  const hasDress = !!selected.dresses;
-
-  return (
-    <View style={StyleSheet.absoluteFill}>
-      {/* Body photo backdrop */}
-      <Image
-        source={{ uri: bodyPhotoUri }}
-        style={StyleSheet.absoluteFill}
-        resizeMode="contain"
-      />
-      {/* Dimming tint so item overlays pop */}
-      <View style={bodyCanvasS.tint} />
-
-      {/* Garment overlays */}
-      {selected.outerwear && (
-        <ZoneOverlay item={selected.outerwear} onDeselect={() => onDeselect('outerwear')} style={zones.outerwear as object} />
-      )}
-      {!hasDress && selected.tops && (
-        <ZoneOverlay item={selected.tops} onDeselect={() => onDeselect('tops')} style={zones.tops as object} />
-      )}
-      {hasDress && selected.dresses && (
-        <ZoneOverlay item={selected.dresses} onDeselect={() => onDeselect('dresses')} style={zones.dresses as object} />
-      )}
-      {!hasDress && selected.bottoms && (
-        <ZoneOverlay item={selected.bottoms} onDeselect={() => onDeselect('bottoms')} style={zones.bottoms as object} />
-      )}
-      {selected.shoes && (
-        <ZoneOverlay item={selected.shoes} onDeselect={() => onDeselect('shoes')} style={zones.shoes as object} />
-      )}
-      {selected.accessories && (
-        <ZoneOverlay item={selected.accessories} onDeselect={() => onDeselect('accessories')} style={zones.accessories as object} />
-      )}
-    </View>
-  );
-}
-
-const bodyCanvasS = StyleSheet.create({
-  tint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-  },
-});
-
 // ─── FlatLayCanvas ────────────────────────────────────────────────────────────
 
 function FlatLayCanvas({
@@ -279,54 +144,63 @@ function FlatLayCanvas({
   onDeselect: (cat: Cat) => void;
 }) {
   const hasDress = !!selected.dresses;
-  // When a dress is selected, tops/bottoms slots are hidden
-  const topItem   = hasDress ? selected.dresses  : selected.tops;
-  const topLabel  = hasDress ? 'Jurk'            : 'Top';
-  const topCat: Cat = hasDress ? 'dresses'       : 'tops';
 
   return (
     <View style={canvasS.container}>
-      {/* Row 1 — Outerwear + Top/Dress */}
-      <View style={canvasS.row}>
-        <FlatLaySlot
-          item={selected.outerwear}
-          label="Jas / Blazer"
-          style={canvasS.slotHalf}
-          onDeselect={() => onDeselect('outerwear')}
-        />
-        <FlatLaySlot
-          item={topItem}
-          label={topLabel}
-          style={canvasS.slotHalf}
-          onDeselect={() => onDeselect(topCat)}
-        />
-      </View>
+      {/* Row 1 — Outerwear + Top, or Dress centered */}
+      {hasDress ? (
+        <View style={[canvasS.row, canvasS.rowTop]}>
+          <FlatLaySlot
+            item={selected.dresses}
+            label="Jurk"
+            style={canvasS.slotDress}
+            onDeselect={() => onDeselect('dresses')}
+          />
+        </View>
+      ) : (
+        <View style={[canvasS.row, canvasS.rowTop]}>
+          <FlatLaySlot
+            item={selected.outerwear}
+            label="Jas / Blazer"
+            style={canvasS.slotHalf}
+            onDeselect={() => onDeselect('outerwear')}
+          />
+          <FlatLaySlot
+            item={selected.tops}
+            label="Top"
+            style={canvasS.slotHalf}
+            onDeselect={() => onDeselect('tops')}
+          />
+        </View>
+      )}
 
-      {/* Row 2 — Bottoms + Accessories (hidden if dress selected) */}
+      {/* Row 2 — Bottoms centered (hidden if dress) */}
       {!hasDress && (
-        <View style={canvasS.row}>
+        <View style={[canvasS.row, canvasS.rowMid]}>
           <FlatLaySlot
             item={selected.bottoms}
             label="Broek / Rok"
             style={canvasS.slotBottoms}
             onDeselect={() => onDeselect('bottoms')}
           />
-          <FlatLaySlot
-            item={selected.accessories}
-            label="Accessoires"
-            style={canvasS.slotAccessory}
-            onDeselect={() => onDeselect('accessories')}
-          />
         </View>
       )}
 
-      {/* Row 3 — Shoes (full width, landscape) */}
-      <FlatLaySlot
-        item={selected.shoes}
-        label="Schoenen"
-        style={canvasS.slotShoes}
-        onDeselect={() => onDeselect('shoes')}
-      />
+      {/* Row 3 — Shoes left, accessories right */}
+      <View style={[canvasS.row, canvasS.rowBottom]}>
+        <FlatLaySlot
+          item={selected.shoes}
+          label="Schoenen"
+          style={canvasS.slotShoes}
+          onDeselect={() => onDeselect('shoes')}
+        />
+        <FlatLaySlot
+          item={selected.accessories}
+          label="Accessoires"
+          style={canvasS.slotAccessory}
+          onDeselect={() => onDeselect('accessories')}
+        />
+      </View>
     </View>
   );
 }
@@ -337,22 +211,30 @@ const canvasS = StyleSheet.create({
     flex: 1,
     padding: spacing.base,
     gap: GAP,
+    backgroundColor: colors.white,
   },
   row: {
     flexDirection: 'row',
     gap: GAP,
-    flex: 4,
   },
+  rowTop:    { flex: 5 },
+  rowMid:    { flex: 4 },
+  rowBottom: { flex: 2 },
   slotHalf: {
     flex: 1,
   },
+  slotDress: {
+    flex: 1,
+    alignSelf: 'center',
+    maxWidth: '55%',
+  },
   slotBottoms: {
+    flex: 1,
+  },
+  slotShoes: {
     flex: 3,
   },
   slotAccessory: {
-    flex: 2,
-  },
-  slotShoes: {
     flex: 2,
   },
 });
@@ -542,10 +424,9 @@ const rowS = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function TryOnScreen() {
-  const insets       = useSafeAreaInsets();
-  const router       = useRouter();
-  const items        = useWardrobeStore((s) => s.items);
-  const bodyPhotoUri = useAuthStore((s) => s.bodyPhotoUri);
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const items  = useWardrobeStore((s) => s.items);
 
   const [selected, setSelected] = useState<Partial<Record<Cat, ClothingItem>>>({});
 
@@ -615,50 +496,17 @@ export default function TryOnScreen() {
         </View>
       </View>
 
-      {/* Canvas: body photo try-on OR flat lay */}
+      {/* Canvas */}
       <View style={s.canvas}>
-        {bodyPhotoUri ? (
-          /* ── Virtual try-on: items placed over body photo ── */
-          items.length === 0 ? (
-            <View style={s.emptyCanvas}>
-              <Image source={{ uri: bodyPhotoUri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
-              <View style={s.emptyCanvasOverlay} />
-              <Ionicons name="shirt-outline" size={36} color="rgba(255,255,255,0.8)" />
-              <Text style={[s.emptyCanvasText, { color: 'rgba(255,255,255,0.85)' }]}>
-                Tik op items hieronder om een outfit samen te stellen
-              </Text>
-            </View>
-          ) : (
-            <BodyPhotoCanvas
-              bodyPhotoUri={bodyPhotoUri}
-              selected={selected}
-              onDeselect={handleDeselect}
-            />
-          )
+        {items.length === 0 ? (
+          <View style={s.emptyCanvas}>
+            <Ionicons name="shirt-outline" size={36} color="#C8C4BC" />
+            <Text style={s.emptyCanvasText}>
+              Tik op items hieronder om een outfit samen te stellen
+            </Text>
+          </View>
         ) : (
-          /* ── Flat lay: items in a structured grid ── */
-          items.length === 0 ? (
-            <View style={s.emptyCanvas}>
-              <Ionicons name="shirt-outline" size={36} color="#C8C4BC" />
-              <Text style={s.emptyCanvasText}>
-                Tik op items hieronder om een outfit samen te stellen
-              </Text>
-            </View>
-          ) : (
-            <FlatLayCanvas selected={selected} onDeselect={handleDeselect} />
-          )
-        )}
-
-        {/* "Add body photo" CTA — shown only when no photo yet */}
-        {!bodyPhotoUri && (
-          <TouchableOpacity
-            style={s.addBodyPhotoBtn}
-            onPress={() => router.push('/(app)/profile')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="person-add-outline" size={15} color={colors.accent} />
-            <Text style={s.addBodyPhotoText}>Voeg lichaamsfoto toe</Text>
-          </TouchableOpacity>
+          <FlatLayCanvas selected={selected} onDeselect={handleDeselect} />
         )}
 
         {selectedCount > 0 && (
@@ -762,7 +610,7 @@ const s = StyleSheet.create({
   },
   canvas: {
     flex: 1,
-    backgroundColor: '#F7F4EF',
+    backgroundColor: colors.white,
   },
   emptyCanvas: {
     flex: 1,
@@ -776,29 +624,6 @@ const s = StyleSheet.create({
     color: '#B0A89E',
     textAlign: 'center',
     lineHeight: 20,
-  },
-  emptyCanvasOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.32)',
-  },
-  addBodyPhotoBtn: {
-    position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 20,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  addBodyPhotoText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.accent,
-    fontWeight: typography.fontWeights.semibold,
   },
   countChip: {
     position: 'absolute',

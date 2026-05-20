@@ -18,7 +18,9 @@ import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/i18n';
 import { useWardrobeItem, useDeleteWardrobeItem, useMarkWorn, useUpdateWardrobeItem } from '@/hooks/useWardrobe';
-import { ClothingItem } from '@/store/wardrobeStore';
+import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { applyGhostMannequin, GhostCategory } from '@/services/replicateService';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -44,10 +46,14 @@ export default function ItemDetailScreen() {
   const { mutateAsync: deleteItem, isPending: isDeleting } = useDeleteWardrobeItem();
   const { mutateAsync: markWorn, isPending: isMarkingWorn } = useMarkWorn();
   const { mutateAsync: updateItem, isPending: isUpdating } = useUpdateWardrobeItem();
+  const updateItemDirect = useWardrobeStore((s) => s.updateItem);
+  const replicateKey     = useSettingsStore((s) => s.replicateKey);
 
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode,      setIsEditMode]      = useState(false);
   const [editSubcategory, setEditSubcategory] = useState('');
-  const [editBrand, setEditBrand] = useState('');
+  const [editBrand,       setEditBrand]       = useState('');
+  const [isGenerating,    setIsGenerating]    = useState(false);
+  const [generateError,   setGenerateError]   = useState<string | null>(null);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -82,6 +88,26 @@ export default function ItemDetailScreen() {
     });
     setIsEditMode(false);
   }, [itemId, updateItem, editSubcategory, editBrand]);
+
+  const handleGenerateProductPhoto = useCallback(async () => {
+    if (!item || !replicateKey) return;
+    setIsGenerating(true);
+    setGenerateError(null);
+    try {
+      const catMap: Record<string, GhostCategory> = {
+        tops: 0, outerwear: 0, bottoms: 1, dresses: 2,
+      };
+      const category: GhostCategory = catMap[item.category] ?? 0;
+      const sourceUri = item.processedPhotoUrl ?? item.imageUrl;
+      const newUri = await applyGhostMannequin(sourceUri, replicateKey, category);
+      const now = new Date().toISOString();
+      updateItemDirect(item.id, { imageUrl: newUri, processedPhotoUrl: newUri, updatedAt: now });
+    } catch {
+      setGenerateError('Genereren mislukt. Probeer opnieuw.');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [item, replicateKey, updateItemDirect]);
 
   const startEdit = useCallback(() => {
     if (item) {
@@ -268,6 +294,31 @@ export default function ItemDetailScreen() {
               variant="secondary"
               fullWidth
             />
+
+            {/* Ghost mannequin via Replicate */}
+            <View style={styles.generateSection}>
+              <Button
+                label={isGenerating ? 'Bezig...' : 'Genereer productfoto'}
+                onPress={handleGenerateProductPhoto}
+                isLoading={isGenerating}
+                variant="secondary"
+                fullWidth
+                disabled={!replicateKey || isGenerating}
+              />
+              {!replicateKey ? (
+                <Text style={styles.generateHint}>
+                  Stel een Replicate API-sleutel in bij Instellingen om productfoto's te genereren.
+                </Text>
+              ) : (
+                <Text style={styles.generateHint}>
+                  Duurt 15–30 seconden. De foto wordt vervangen door een professionele productfoto.
+                </Text>
+              )}
+              {generateError && (
+                <Text style={styles.generateError}>{generateError}</Text>
+              )}
+            </View>
+
             <Button
               label={t('wardrobe.item.delete')}
               onPress={handleDelete}
@@ -410,6 +461,20 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.md,
     marginTop: spacing.base,
+  },
+  generateSection: {
+    gap: spacing.xs,
+  },
+  generateHint: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  generateError: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.status.error,
+    textAlign: 'center',
   },
   errorText: {
     fontSize: typography.fontSizes.base,

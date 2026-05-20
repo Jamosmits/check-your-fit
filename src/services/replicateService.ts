@@ -174,7 +174,14 @@ export async function applyGhostMannequin(
   if (!apiKey) return imageUri;
 
   try {
-    const imageBase64 = await readAsStringAsync(imageUri, { encoding: 'base64' });
+    // Download remote URLs to local cache before reading as base64
+    let localUri = imageUri;
+    if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+      const cached = await downloadToCache(imageUri, 'input');
+      if (!cached) return imageUri;
+      localUri = cached;
+    }
+    const imageBase64 = await readAsStringAsync(localUri, { encoding: 'base64' });
 
     // Try primary model first
     let outputUrl = await tryOOTDiffusion(imageBase64, apiKey, category);
