@@ -1,19 +1,12 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
-import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
+import { analyzeWardrobeImage } from '@/services/openaiService';
 import { generateProductPhoto } from '@/services/productPhotoService';
 
-export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
+export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'COMPLETE';
 export type ScanMode  = 'wardrobe' | 'single';
-
-export interface ReviewItem extends DetectedItem {
-  id:          string;
-  originalUri: string; // raw camera capture
-  imageUri:    string; // bg-removed + cropped (or same as originalUri if no key)
-  accepted:    boolean | null;
-}
 
 function makeId() {
   return `scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -22,58 +15,25 @@ function makeId() {
 interface UseScanReturn {
   scanState:       ScanState;
   scanMode:        ScanMode;
-  reviewItems:     ReviewItem[];
-  currentIndex:    number;
   processingLabel: string;
   error:           string | null;
   addedCount:      number;
 
   startScan:     (mode: ScanMode) => void;
   finishCapture: (uris: string[]) => Promise<void>;
-  acceptItem:    (id: string) => void;
-  rejectItem:    (id: string) => void;
-  acceptAll:     () => void;
-  submitReview:  () => void;
   reset:         () => void;
 }
 
-const PROCESSING_LABELS = [
-  'Kledingkast analyseren...',
-  'Items herkennen...',
-  'Item beschrijven...',
-  'Productfoto genereren... ±15 sec',
-  'Kleuren bepalen...',
-  'Stijlen classificeren...',
-];
-
 export function useScan(): UseScanReturn {
-  const addItem     = useWardrobeStore((s) => s.addItem);
-  const userId      = useAuthStore((s) => s.user?.id ?? 'local');
-  const openaiKey   = useSettingsStore((s) => s.openaiKey);
+  const addItem   = useWardrobeStore((s) => s.addItem);
+  const userId    = useAuthStore((s) => s.user?.id ?? 'local');
+  const openaiKey = useSettingsStore((s) => s.openaiKey);
 
-  const [scanState,       setScanState]      = useState<ScanState>('INTRO');
-  const [scanMode,        setScanMode]       = useState<ScanMode>('wardrobe');
-  const [reviewItems,     setReviewItems]    = useState<ReviewItem[]>([]);
-  const [currentIndex,    setCurrentIndex]   = useState(0);
-  const [processingLabel, setProcessingLabel] = useState(PROCESSING_LABELS[0]);
-  const [error,           setError]          = useState<string | null>(null);
-  const [addedCount,      setAddedCount]     = useState(0);
-  const labelIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const startLabelCycle = useCallback(() => {
-    let idx = 0;
-    labelIntervalRef.current = setInterval(() => {
-      idx = (idx + 1) % PROCESSING_LABELS.length;
-      setProcessingLabel(PROCESSING_LABELS[idx]);
-    }, 1800);
-  }, []);
-
-  const stopLabelCycle = useCallback(() => {
-    if (labelIntervalRef.current) {
-      clearInterval(labelIntervalRef.current);
-      labelIntervalRef.current = null;
-    }
-  }, []);
+  const [scanState,       setScanState]       = useState<ScanState>('INTRO');
+  const [scanMode,        setScanMode]        = useState<ScanMode>('wardrobe');
+  const [processingLabel, setProcessingLabel] = useState('');
+  const [error,           setError]           = useState<string | null>(null);
+  const [addedCount,      setAddedCount]      = useState(0);
 
   const startScan = useCallback((mode: ScanMode) => {
     setScanMode(mode);
@@ -84,111 +44,72 @@ export function useScan(): UseScanReturn {
   const finishCapture = useCallback(async (uris: string[]) => {
     if (uris.length === 0) return;
     setScanState('PROCESSING');
-    setProcessingLabel(PROCESSING_LABELS[0]);
-    startLabelCycle();
     setError(null);
 
     try {
       const isSingle  = scanMode === 'single';
       const sourceUri = uris[uris.length - 1];
 
-      // Step 1 — OpenAI herkenning: categorie, kleuren, stijl
+      // Stap 1 — Herkenning
+      setProcessingLabel('Kledingstuk herkennen...');
       const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle);
 
-      // Step 2 — GPT-4o Vision beschrijft het item, DALL-E 3 genereert productfoto
-      const finalUri = await generateProductPhoto(sourceUri, openaiKey);
+      // Stap 2 — Productfoto (best-effort; falls back to sourceUri on failure)
+      setProcessingLabel('Productfoto genereren... ±15 sec');
+      let finalUri = sourceUri;
+      try {
+        finalUri = await generateProductPhoto(sourceUri, openaiKey);
+      } catch (photoErr) {
+        console.warn('[useScan] Product photo failed, using original:', photoErr);
+      }
 
-      const items: ReviewItem[] = detected.map((d) => ({
-        ...d,
-        id:          makeId(),
-        originalUri: sourceUri,
-        imageUri:    finalUri,
-        accepted:    null,
-      }));
+      // Stap 3 — Opslaan
+      setProcessingLabel('Toevoegen aan kledingkast...');
+      const now = new Date().toISOString();
+      detected.forEach((d) => {
+        const newItem: ClothingItem = {
+          id:                makeId(),
+          userId,
+          imageUrl:          finalUri,
+          processedPhotoUrl: finalUri !== sourceUri ? finalUri : undefined,
+          category:          d.category,
+          subcategory:       d.subcategory,
+          brand:             d.brand ?? undefined,
+          colors:            d.colors,
+          color:             d.colorNames[0],
+          season:            d.season,
+          notes:             d.styleTags.join(', '),
+          timesWorn:         0,
+          createdAt:         now,
+          updatedAt:         now,
+        };
+        addItem(newItem);
+      });
 
-      stopLabelCycle();
-      setReviewItems(items);
-      setCurrentIndex(0);
-      setScanState('REVIEW');
+      setAddedCount(detected.length);
+      setScanState('COMPLETE');
     } catch (err) {
-      stopLabelCycle();
-      setError(err instanceof Error ? err.message : 'Analyse mislukt. Probeer opnieuw.');
+      const msg = err instanceof Error ? err.message : 'Analyse mislukt. Probeer opnieuw.';
+      setError(msg);
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, startLabelCycle, stopLabelCycle]);
-
-  const acceptItem = useCallback((id: string) => {
-    setReviewItems((prev) =>
-      prev.map((item) => item.id === id ? { ...item, accepted: true } : item),
-    );
-    setCurrentIndex((i) => Math.min(i + 1, reviewItems.length - 1));
-  }, [reviewItems.length]);
-
-  const rejectItem = useCallback((id: string) => {
-    setReviewItems((prev) =>
-      prev.map((item) => item.id === id ? { ...item, accepted: false } : item),
-    );
-    setCurrentIndex((i) => Math.min(i + 1, reviewItems.length - 1));
-  }, [reviewItems.length]);
-
-  const acceptAll = useCallback(() => {
-    setReviewItems((prev) => prev.map((item) => ({ ...item, accepted: true })));
-    setCurrentIndex(reviewItems.length - 1);
-  }, [reviewItems.length]);
-
-  const submitReview = useCallback(() => {
-    const now   = new Date().toISOString();
-    const toAdd = reviewItems.filter((item) => item.accepted !== false);
-
-    toAdd.forEach((item) => {
-      const bgRemoved = item.imageUri !== item.originalUri;
-      const newItem: ClothingItem = {
-        id:                makeId(),
-        userId,
-        imageUrl:          item.imageUri,
-        processedPhotoUrl: bgRemoved ? item.imageUri : undefined,
-        category:          item.category,
-        subcategory:       item.subcategory,
-        brand:             item.brand ?? undefined,
-        colors:            item.colors,
-        color:             item.colorNames[0],
-        season:            item.season,
-        notes:             item.styleTags.join(', '),
-        timesWorn:         0,
-        createdAt:         now,
-        updatedAt:         now,
-      };
-      addItem(newItem);
-    });
-
-    setAddedCount(toAdd.length);
-    setScanState('COMPLETE');
-  }, [reviewItems, userId, addItem]);
+  }, [scanMode, openaiKey, addItem, userId]);
 
   const reset = useCallback(() => {
-    stopLabelCycle();
     setScanState('INTRO');
-    setReviewItems([]);
-    setCurrentIndex(0);
     setError(null);
     setAddedCount(0);
-    setProcessingLabel(PROCESSING_LABELS[0]);
-  }, [stopLabelCycle]);
+    setProcessingLabel('');
+  }, []);
 
   return {
     scanState,
     scanMode,
-    reviewItems,
-    currentIndex,
     processingLabel,
     error,
     addedCount,
     startScan,
     finishCapture,
-    acceptItem,
-    rejectItem,
-    acceptAll,
-    submitReview,
     reset,
   };
 }

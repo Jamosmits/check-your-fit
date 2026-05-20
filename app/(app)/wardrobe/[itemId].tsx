@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -18,9 +17,7 @@ import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/i18n';
 import { useWardrobeItem, useDeleteWardrobeItem, useMarkWorn, useUpdateWardrobeItem } from '@/hooks/useWardrobe';
-import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
-import { useSettingsStore } from '@/store/settingsStore';
-import { generateProductPhoto } from '@/services/productPhotoService';
+import { ClothingItem } from '@/store/wardrobeStore';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -46,14 +43,9 @@ export default function ItemDetailScreen() {
   const { mutateAsync: deleteItem, isPending: isDeleting } = useDeleteWardrobeItem();
   const { mutateAsync: markWorn, isPending: isMarkingWorn } = useMarkWorn();
   const { mutateAsync: updateItem, isPending: isUpdating } = useUpdateWardrobeItem();
-  const updateItemDirect = useWardrobeStore((s) => s.updateItem);
-  const openaiKey        = useSettingsStore((s) => s.openaiKey);
-
   const [isEditMode,      setIsEditMode]      = useState(false);
   const [editSubcategory, setEditSubcategory] = useState('');
   const [editBrand,       setEditBrand]       = useState('');
-  const [isGenerating,    setIsGenerating]    = useState(false);
-  const [generateError,   setGenerateError]   = useState<string | null>(null);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -88,37 +80,6 @@ export default function ItemDetailScreen() {
     });
     setIsEditMode(false);
   }, [itemId, updateItem, editSubcategory, editBrand]);
-
-  const handleGenerateProductPhoto = useCallback(async () => {
-    console.log('[itemDetail] handleGenerateProductPhoto pressed');
-    console.log('[itemDetail] item:', item?.id, '| openaiKey:', openaiKey ? '✓ set' : '✗ missing');
-
-    if (!item) {
-      console.warn('[itemDetail] No item loaded');
-      return;
-    }
-
-    setIsGenerating(true);
-    setGenerateError(null);
-
-    try {
-      const sourceUri = item.processedPhotoUrl ?? item.imageUrl;
-      console.log('[itemDetail] Source URI:', sourceUri.slice(0, 80));
-
-      const newUri = await generateProductPhoto(sourceUri, openaiKey);
-      console.log('[itemDetail] Generated URI:', newUri.slice(0, 80));
-
-      const now = new Date().toISOString();
-      updateItemDirect(item.id, { imageUrl: newUri, processedPhotoUrl: newUri, updatedAt: now });
-      console.log('[itemDetail] Item updated successfully');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Genereren mislukt. Probeer opnieuw.';
-      console.error('[itemDetail] Generate error:', e);
-      setGenerateError(msg);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [item, openaiKey, updateItemDirect]);
 
   const startEdit = useCallback(() => {
     if (item) {
@@ -306,36 +267,6 @@ export default function ItemDetailScreen() {
               fullWidth
             />
 
-            {/* Ghost mannequin via GPT-4o Vision + DALL-E 3 */}
-            <View style={styles.generateSection}>
-              {isGenerating ? (
-                <View style={styles.generatingRow}>
-                  <ActivityIndicator size="small" color={colors.accent} />
-                  <Text style={styles.generatingText}>Productfoto genereren... ±15 sec</Text>
-                </View>
-              ) : (
-                <Button
-                  label="Genereer productfoto"
-                  onPress={handleGenerateProductPhoto}
-                  variant="secondary"
-                  fullWidth
-                  disabled={!openaiKey}
-                />
-              )}
-              {!openaiKey ? (
-                <Text style={styles.generateHint}>
-                  Stel een OpenAI API-sleutel in bij Instellingen om productfoto's te genereren.
-                </Text>
-              ) : !isGenerating && (
-                <Text style={styles.generateHint}>
-                  GPT-4o beschrijft het item, DALL-E 3 genereert een professionele productfoto (±15 sec).
-                </Text>
-              )}
-              {generateError !== null && (
-                <Text style={styles.generateError}>{generateError}</Text>
-              )}
-            </View>
-
             <Button
               label={t('wardrobe.item.delete')}
               onPress={handleDelete}
@@ -478,34 +409,6 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.md,
     marginTop: spacing.base,
-  },
-  generateSection: {
-    gap: spacing.xs,
-  },
-  generatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 12,
-  },
-  generatingText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.accent,
-    fontWeight: typography.fontWeights.medium,
-  },
-  generateHint: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  generateError: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.status.error,
-    textAlign: 'center',
   },
   errorText: {
     fontSize: typography.fontSizes.base,

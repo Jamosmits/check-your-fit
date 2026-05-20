@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  PanResponder,
   Animated,
   Dimensions,
   Image,
@@ -18,15 +17,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
-import { useScan, ScanMode, ReviewItem } from '@/hooks/useScan';
+import { useScan, ScanMode } from '@/hooks/useScan';
 import { useSettingsStore } from '@/store/settingsStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const CARD_W = SW - spacing.screen * 2;
-const CARD_H = CARD_W * 1.35;
-const SWIPE_THRESHOLD = SW * 0.28;
 
 // ─── Confetti ────────────────────────────────────────────────────────────────
 
@@ -80,207 +76,6 @@ function Confetti() {
   );
 }
 
-// ─── SwipeCard ───────────────────────────────────────────────────────────────
-
-function SwipeCard({
-  item,
-  onAccept,
-  onReject,
-}: {
-  item: ReviewItem;
-  onAccept: () => void;
-  onReject: () => void;
-}) {
-  const pan = useRef(new Animated.ValueXY()).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-      }),
-      onPanResponderRelease: (_, g) => {
-        if (g.dx > SWIPE_THRESHOLD) {
-          Animated.timing(pan, {
-            toValue: { x: SW + 120, y: g.dy },
-            duration: 200,
-            useNativeDriver: false,
-          }).start(onAccept);
-        } else if (g.dx < -SWIPE_THRESHOLD) {
-          Animated.timing(pan, {
-            toValue: { x: -SW - 120, y: g.dy },
-            duration: 200,
-            useNativeDriver: false,
-          }).start(onReject);
-        } else {
-          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
-        }
-      },
-    }),
-  ).current;
-
-  const rotate = pan.x.interpolate({
-    inputRange: [-SW / 2, 0, SW / 2],
-    outputRange: ['-12deg', '0deg', '12deg'],
-  });
-  const acceptOpacity = pan.x.interpolate({
-    inputRange: [0, SWIPE_THRESHOLD],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-  const rejectOpacity = pan.x.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-
-  const flyRight = useCallback(() => {
-    Animated.timing(pan, {
-      toValue: { x: SW + 120, y: 0 },
-      duration: 220,
-      useNativeDriver: false,
-    }).start(onAccept);
-  }, [pan, onAccept]);
-
-  const flyLeft = useCallback(() => {
-    Animated.timing(pan, {
-      toValue: { x: -SW - 120, y: 0 },
-      duration: 220,
-      useNativeDriver: false,
-    }).start(onReject);
-  }, [pan, onReject]);
-
-  return (
-    <View style={cardS.wrapper}>
-      <Animated.View
-        style={[
-          cardS.card,
-          { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }] },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        <View style={cardS.imageWrap}>
-          <Image source={{ uri: item.imageUri }} style={cardS.image} resizeMode="contain" />
-        </View>
-
-        <Animated.View style={[cardS.stamp, cardS.stampAccept, { opacity: acceptOpacity }]}>
-          <Text style={[cardS.stampText, { color: colors.status.success }]}>✓ TOEVOEGEN</Text>
-        </Animated.View>
-
-        <Animated.View style={[cardS.stamp, cardS.stampReject, { opacity: rejectOpacity }]}>
-          <Text style={[cardS.stampText, { color: colors.status.error }]}>✗ OVERSLAAN</Text>
-        </Animated.View>
-
-        <View style={cardS.infoBar}>
-          <View style={{ flex: 1 }}>
-            <Text style={cardS.subcategory}>{item.subcategory}</Text>
-            {item.brand ? <Text style={cardS.brand}>{item.brand}</Text> : null}
-          </View>
-          <View style={cardS.dots}>
-            {item.colors.slice(0, 3).map((c, i) => (
-              <View key={i} style={[cardS.dot, { backgroundColor: c }]} />
-            ))}
-          </View>
-        </View>
-      </Animated.View>
-
-      <View style={cardS.actions}>
-        <TouchableOpacity style={[cardS.actionBtn, cardS.rejectBtn]} onPress={flyLeft} activeOpacity={0.8}>
-          <Ionicons name="close" size={28} color={colors.status.error} />
-        </TouchableOpacity>
-        <TouchableOpacity style={[cardS.actionBtn, cardS.acceptBtn]} onPress={flyRight} activeOpacity={0.8}>
-          <Ionicons name="checkmark" size={28} color={colors.status.success} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-const cardS = StyleSheet.create({
-  wrapper: { alignItems: 'center', gap: spacing.xl },
-  card: {
-    width: CARD_W,
-    height: CARD_H,
-    borderRadius: 20,
-    backgroundColor: colors.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
-    overflow: 'hidden',
-  },
-  imageWrap: {
-    flex: 1,
-    backgroundColor: '#FAFAFA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.base,
-  },
-  image: { width: '100%', height: '100%' },
-  stamp: {
-    position: 'absolute',
-    top: 28,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 6,
-    borderWidth: 3,
-  },
-  stampAccept: {
-    right: 18,
-    borderColor: colors.status.success,
-    backgroundColor: 'rgba(52,199,89,0.1)',
-    transform: [{ rotate: '12deg' }],
-  },
-  stampReject: {
-    left: 18,
-    borderColor: colors.status.error,
-    backgroundColor: 'rgba(255,59,48,0.1)',
-    transform: [{ rotate: '-12deg' }],
-  },
-  stampText: {
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  infoBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.white,
-  },
-  subcategory: {
-    fontSize: typography.fontSizes.base,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.textPrimary,
-  },
-  brand: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  dots: { flexDirection: 'row', gap: 6 },
-  dot: { width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: colors.border },
-  actions: { flexDirection: 'row', gap: 48 },
-  actionBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  rejectBtn: { backgroundColor: colors.white, borderWidth: 2, borderColor: colors.status.error },
-  acceptBtn: { backgroundColor: colors.white, borderWidth: 2, borderColor: colors.status.success },
-});
 
 // ─── IntroScreen ─────────────────────────────────────────────────────────────
 
@@ -639,6 +434,12 @@ const camS = StyleSheet.create({
 
 // ─── ProcessingScreen ─────────────────────────────────────────────────────────
 
+const STEP_LABELS = [
+  'Kledingstuk herkennen...',
+  'Productfoto genereren... ±15 sec',
+  'Toevoegen aan kledingkast...',
+];
+
 function ProcessingScreen({ label }: { label: string }) {
   const spinAnim  = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -655,7 +456,8 @@ function ProcessingScreen({ label }: { label: string }) {
     ).start();
   }, []);
 
-  const rotate = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const rotate     = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const stepIndex  = STEP_LABELS.indexOf(label);
 
   return (
     <View style={procS.container}>
@@ -665,9 +467,20 @@ function ProcessingScreen({ label }: { label: string }) {
           <Ionicons name="shirt-outline" size={40} color="rgba(255,255,255,0.88)" />
         </Animated.View>
       </View>
-      <Text style={procS.title}>Analyseren...</Text>
+
       <Text style={procS.label}>{label}</Text>
-      <Text style={procS.sub}>Dit kan even duren</Text>
+
+      {/* Step dots */}
+      <View style={procS.dots}>
+        {STEP_LABELS.map((_, i) => (
+          <View
+            key={i}
+            style={[procS.dot, i <= stepIndex && procS.dotActive]}
+          />
+        ))}
+      </View>
+
+      <Text style={procS.sub}>Even geduld alsjeblieft</Text>
     </View>
   );
 }
@@ -696,138 +509,30 @@ const procS = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.88)',
     borderTopColor: 'transparent',
   },
-  title: {
+  label: {
     fontFamily: typography.fonts.serif.bold,
-    fontSize: typography.fontSizes.xl,
-    color: colors.white,
-  },
-  label: { fontSize: typography.fontSizes.md, color: 'rgba(255,255,255,0.6)' },
-  sub:   { fontSize: typography.fontSizes.sm, color: 'rgba(255,255,255,0.32)' },
-});
-
-// ─── ReviewScreen ─────────────────────────────────────────────────────────────
-
-function ReviewScreen({
-  items,
-  currentIndex,
-  onAccept,
-  onReject,
-  onAcceptAll,
-  onSubmit,
-}: {
-  items: ReviewItem[];
-  currentIndex: number;
-  onAccept: (id: string) => void;
-  onReject: (id: string) => void;
-  onAcceptAll: () => void;
-  onSubmit: () => void;
-}) {
-  const insets  = useSafeAreaInsets();
-  const current = items[currentIndex];
-  const decided = items.filter((i) => i.accepted !== null).length;
-  const progress = items.length > 0 ? decided / items.length : 0;
-  const allDecided = decided === items.length;
-  const pendingCount = items.filter((i) => i.accepted !== false).length;
-
-  return (
-    <View style={[revS.container, { paddingTop: insets.top + spacing.base }]}>
-      <View style={revS.header}>
-        <Text style={revS.headerTitle}>
-          {allDecided ? 'Klaar' : `${currentIndex + 1} / ${items.length}`}
-        </Text>
-        <TouchableOpacity onPress={onAcceptAll} activeOpacity={0.8}>
-          <Text style={revS.acceptAll}>Alles toevoegen</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={revS.progressTrack}>
-        <View style={[revS.progressFill, { width: `${progress * 100}%` as `${number}%` }]} />
-      </View>
-
-      <View style={revS.cardArea}>
-        {allDecided ? (
-          <View style={revS.doneBox}>
-            <Ionicons name="checkmark-circle" size={64} color={colors.status.success} />
-            <Text style={revS.doneText}>Alle items beoordeeld</Text>
-            <Text style={revS.doneSub}>
-              {pendingCount} van {items.length} worden toegevoegd
-            </Text>
-          </View>
-        ) : current ? (
-          <SwipeCard
-            key={current.id}
-            item={current}
-            onAccept={() => onAccept(current.id)}
-            onReject={() => onReject(current.id)}
-          />
-        ) : null}
-      </View>
-
-      {!allDecided && (
-        <Text style={revS.hint}>← Overslaan &nbsp;·&nbsp; Toevoegen →</Text>
-      )}
-
-      <View style={[revS.footer, { paddingBottom: insets.bottom + spacing.base }]}>
-        <Button
-          label={`Toevoegen aan kledingkast (${pendingCount})`}
-          onPress={onSubmit}
-          fullWidth
-        />
-      </View>
-    </View>
-  );
-}
-
-const revS = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screen,
-    paddingBottom: spacing.sm,
-  },
-  headerTitle: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.textSecondary,
-    fontWeight: typography.fontWeights.medium,
-  },
-  acceptAll: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.accent,
-  },
-  progressTrack: {
-    height: 4,
-    backgroundColor: colors.surfaceAlt,
-    marginHorizontal: spacing.screen,
-    borderRadius: 2,
-    marginBottom: spacing.xl,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 2 },
-  cardArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.screen },
-  doneBox: { alignItems: 'center', gap: spacing.md },
-  doneText: {
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.textPrimary,
-  },
-  doneSub: { fontSize: typography.fontSizes.base, color: colors.textSecondary },
-  hint: {
+    color: colors.white,
     textAlign: 'center',
-    fontSize: typography.fontSizes.sm,
-    color: colors.textMuted,
-    marginBottom: spacing.base,
+    paddingHorizontal: spacing.xl,
   },
-  footer: {
-    paddingHorizontal: spacing.screen,
-    paddingTop: spacing.base,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.background,
+  dots: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: spacing.sm,
   },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  dotActive: {
+    backgroundColor: colors.white,
+  },
+  sub: { fontSize: typography.fontSizes.sm, color: 'rgba(255,255,255,0.32)', marginTop: spacing.xs },
 });
+
 
 // ─── CompleteScreen ───────────────────────────────────────────────────────────
 
@@ -922,17 +627,11 @@ export default function ScanScreen() {
   const {
     scanState,
     scanMode,
-    reviewItems,
-    currentIndex,
     processingLabel,
     error,
     addedCount,
     startScan,
     finishCapture,
-    acceptItem,
-    rejectItem,
-    acceptAll,
-    submitReview,
     reset,
   } = useScan();
 
@@ -960,19 +659,6 @@ export default function ScanScreen() {
 
   if (scanState === 'PROCESSING') {
     return <ProcessingScreen label={processingLabel} />;
-  }
-
-  if (scanState === 'REVIEW') {
-    return (
-      <ReviewScreen
-        items={reviewItems}
-        currentIndex={currentIndex}
-        onAccept={acceptItem}
-        onReject={rejectItem}
-        onAcceptAll={acceptAll}
-        onSubmit={submitReview}
-      />
-    );
   }
 
   if (scanState === 'COMPLETE') {
