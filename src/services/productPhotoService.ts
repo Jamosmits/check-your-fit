@@ -1,4 +1,5 @@
 import { readAsStringAsync, writeAsStringAsync, cacheDirectory } from 'expo-file-system/legacy';
+import { Alert } from 'react-native';
 
 const OPENAI_CHAT   = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_IMAGES = 'https://api.openai.com/v1/images/generations';
@@ -90,6 +91,7 @@ export async function generateDalle3Photo(description: string, openaiKey: string
   if (!res.ok) {
     const errText = await res.text().catch(() => '<unreadable>');
     console.error('[productPhoto] DALL-E 3 full error response:', errText);
+    Alert.alert('DALL-E Error', `Status: ${res.status}\n\n${errText}`);
     throw new Error(`DALL-E 3 ${res.status}: ${errText.slice(0, 300)}`);
   }
 
