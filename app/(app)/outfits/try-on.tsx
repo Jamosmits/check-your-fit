@@ -17,7 +17,6 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
-import { useAuthStore } from '@/store/authStore';
 
 const { height: SH } = Dimensions.get('window');
 const THUMB = 76;
@@ -34,66 +33,193 @@ const CATEGORIES: { key: Cat; label: string; icon: string }[] = [
   { key: 'accessories', label: 'Accessoires', icon: '💍' },
 ];
 
-// Zones as percentages of the model container — calibrated for the body icon
-const ZONES: Record<Cat, { top: string; left: string; right: string; height: string; zIndex: number }> = {
-  accessories: { top: '4%',  left: '28%', right: '28%', height: '13%', zIndex: 5 },
-  outerwear:   { top: '14%', left: '6%',  right: '6%',  height: '40%', zIndex: 2 },
-  dresses:     { top: '16%', left: '16%', right: '16%', height: '58%', zIndex: 2 },
-  tops:        { top: '18%', left: '16%', right: '16%', height: '30%', zIndex: 3 },
-  bottoms:     { top: '46%', left: '16%', right: '16%', height: '32%', zIndex: 3 },
-  shoes:       { top: '77%', left: '20%', right: '20%', height: '19%', zIndex: 4 },
-};
+// ─── FlatLaySlot ─────────────────────────────────────────────────────────────
 
-// Rendering order: back to front
-const RENDER_ORDER: Cat[] = ['outerwear', 'dresses', 'bottoms', 'tops', 'shoes', 'accessories'];
+interface SlotProps {
+  item?: ClothingItem | null;
+  label: string;
+  style?: object;
+  onDeselect?: () => void;
+}
 
-// ─── Mannequin ────────────────────────────────────────────────────────────────
+function FlatLaySlot({ item, label, style, onDeselect }: SlotProps) {
+  const uri = item ? (item.processedPhotoUrl ?? item.imageUrl) : null;
 
-function Mannequin() {
+  if (!uri) {
+    return (
+      <View style={[flatS.slot, flatS.slotEmpty, style]}>
+        <Ionicons name="add-circle-outline" size={22} color="#C8C4BC" />
+        <Text style={flatS.slotLabel}>{label}</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={manS.wrap} pointerEvents="none">
-      <View style={manS.head} />
-      <View style={manS.neckRow}>
-        <View style={manS.shoulderL} />
-        <View style={manS.neck} />
-        <View style={manS.shoulderR} />
-      </View>
-      <View style={manS.torso} />
-      <View style={manS.waist} />
-      <View style={manS.hips} />
-      <View style={manS.legsRow}>
-        <View style={manS.leg} />
-        <View style={manS.leg} />
-      </View>
-      <View style={manS.feetRow}>
-        <View style={manS.foot} />
-        <View style={manS.foot} />
-      </View>
+    <View style={[flatS.slot, flatS.slotFilled, style]}>
+      <Image source={{ uri }} style={flatS.slotImage} resizeMode="contain" />
+      {onDeselect && (
+        <TouchableOpacity style={flatS.removeBtn} onPress={onDeselect} activeOpacity={0.8}>
+          <Ionicons name="close" size={11} color={colors.white} />
+        </TouchableOpacity>
+      )}
+      {item?.brand && (
+        <View style={flatS.brandTag}>
+          <Text style={flatS.brandText} numberOfLines={1}>{item.brand}</Text>
+        </View>
+      )}
     </View>
   );
 }
 
-const MC = '#DED8D0';
-const manS = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+const flatS = StyleSheet.create({
+  slot: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.white,
+  },
+  slotEmpty: {
+    borderWidth: 1.5,
+    borderColor: '#DDD8D0',
+    borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: '6%',
+    gap: 4,
+    backgroundColor: '#FAFAF8',
   },
-  head:      { width: 46, height: 46, borderRadius: 23, backgroundColor: MC },
-  neckRow:   { flexDirection: 'row', alignItems: 'flex-end', marginTop: 2 },
-  shoulderL: { width: 36, height: 16, backgroundColor: MC, borderTopLeftRadius: 8 },
-  neck:      { width: 16, height: 12, backgroundColor: MC },
-  shoulderR: { width: 36, height: 16, backgroundColor: MC, borderTopRightRadius: 8 },
-  torso:     { width: 78, height: 88, backgroundColor: MC, borderRadius: 4 },
-  waist:     { width: 64, height: 12, backgroundColor: MC },
-  hips:      { width: 88, height: 22, backgroundColor: MC, borderRadius: 6 },
-  legsRow:   { flexDirection: 'row', gap: 8, marginTop: 2 },
-  leg:       { width: 34, height: 120, backgroundColor: MC, borderRadius: 6 },
-  feetRow:   { flexDirection: 'row', gap: 12, marginTop: 2 },
-  foot:      { width: 38, height: 14, backgroundColor: MC, borderRadius: 4 },
+  slotFilled: {
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  slotLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: '#B0A89E',
+    fontWeight: typography.fontWeights.medium,
+  },
+  slotImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.white,
+  },
+  removeBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandTag: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  brandText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+});
+
+// ─── FlatLayCanvas ────────────────────────────────────────────────────────────
+
+function FlatLayCanvas({
+  selected,
+  onDeselect,
+}: {
+  selected: Partial<Record<Cat, ClothingItem>>;
+  onDeselect: (cat: Cat) => void;
+}) {
+  const hasDress = !!selected.dresses;
+  // When a dress is selected, tops/bottoms slots are hidden
+  const topItem   = hasDress ? selected.dresses  : selected.tops;
+  const topLabel  = hasDress ? 'Jurk'            : 'Top';
+  const topCat: Cat = hasDress ? 'dresses'       : 'tops';
+
+  return (
+    <View style={canvasS.container}>
+      {/* Row 1 — Outerwear + Top/Dress */}
+      <View style={canvasS.row}>
+        <FlatLaySlot
+          item={selected.outerwear}
+          label="Jas / Blazer"
+          style={canvasS.slotHalf}
+          onDeselect={() => onDeselect('outerwear')}
+        />
+        <FlatLaySlot
+          item={topItem}
+          label={topLabel}
+          style={canvasS.slotHalf}
+          onDeselect={() => onDeselect(topCat)}
+        />
+      </View>
+
+      {/* Row 2 — Bottoms + Accessories (hidden if dress selected) */}
+      {!hasDress && (
+        <View style={canvasS.row}>
+          <FlatLaySlot
+            item={selected.bottoms}
+            label="Broek / Rok"
+            style={canvasS.slotBottoms}
+            onDeselect={() => onDeselect('bottoms')}
+          />
+          <FlatLaySlot
+            item={selected.accessories}
+            label="Accessoires"
+            style={canvasS.slotAccessory}
+            onDeselect={() => onDeselect('accessories')}
+          />
+        </View>
+      )}
+
+      {/* Row 3 — Shoes (full width, landscape) */}
+      <FlatLaySlot
+        item={selected.shoes}
+        label="Schoenen"
+        style={canvasS.slotShoes}
+        onDeselect={() => onDeselect('shoes')}
+      />
+    </View>
+  );
+}
+
+const GAP = spacing.sm;
+const canvasS = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: spacing.base,
+    gap: GAP,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: GAP,
+    flex: 4,
+  },
+  slotHalf: {
+    flex: 1,
+  },
+  slotBottoms: {
+    flex: 3,
+  },
+  slotAccessory: {
+    flex: 2,
+  },
+  slotShoes: {
+    flex: 2,
+  },
 });
 
 // ─── ItemThumb ────────────────────────────────────────────────────────────────
@@ -166,7 +292,6 @@ const thumbS = StyleSheet.create({
 // ─── CategoryRow ──────────────────────────────────────────────────────────────
 
 function CategoryRow({
-  category,
   label,
   icon,
   items,
@@ -191,7 +316,9 @@ function CategoryRow({
         <Text style={rowS.label}>{label}</Text>
         {selectedItem && (
           <View style={rowS.selectedBadge}>
-            <Text style={rowS.selectedBadgeText}>{selectedItem.subcategory ?? selectedItem.brand ?? '✓'}</Text>
+            <Text style={rowS.selectedBadgeText} numberOfLines={1}>
+              {selectedItem.subcategory ?? selectedItem.brand ?? '✓'}
+            </Text>
           </View>
         )}
         <TouchableOpacity
@@ -253,7 +380,7 @@ const rowS = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    maxWidth: 100,
+    maxWidth: 110,
   },
   selectedBadgeText: {
     fontSize: typography.fontSizes.xs,
@@ -280,10 +407,9 @@ const rowS = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function TryOnScreen() {
-  const insets     = useSafeAreaInsets();
-  const router     = useRouter();
-  const items      = useWardrobeStore((s) => s.items);
-  const bodyPhoto  = useAuthStore((s) => s.bodyPhotoUri);
+  const insets  = useSafeAreaInsets();
+  const router  = useRouter();
+  const items   = useWardrobeStore((s) => s.items);
 
   const [selected, setSelected] = useState<Partial<Record<Cat, ClothingItem>>>({});
 
@@ -296,21 +422,22 @@ export default function TryOnScreen() {
     return map;
   }, [items]);
 
-  // Use processed photo when available for both thumbnails and model overlays
-  const photoUri = useCallback(
-    (item: ClothingItem) => item.processedPhotoUrl ?? item.imageUrl,
-    [],
-  );
-
   const handleSelect = useCallback((item: ClothingItem) => {
     setSelected((prev) => {
-      // Tapping the already-selected item deselects it
       if (prev[item.category]?.id === item.id) {
         const next = { ...prev };
         delete next[item.category];
         return next;
       }
       return { ...prev, [item.category]: item };
+    });
+  }, []);
+
+  const handleDeselect = useCallback((cat: Cat) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      delete next[cat];
+      return next;
     });
   }, []);
 
@@ -339,60 +466,32 @@ export default function TryOnScreen() {
 
         <Text style={s.headerTitle}>Outfit samenstellen</Text>
 
-        <TouchableOpacity onPress={handleRegenerate} activeOpacity={0.8} style={s.regenBtn}>
-          <Ionicons name="shuffle" size={14} color={colors.white} />
-          <Text style={s.regenText}>Stel voor</Text>
-        </TouchableOpacity>
+        <View style={s.headerRight}>
+          {selectedCount > 0 && (
+            <TouchableOpacity onPress={handleClearAll} activeOpacity={0.7} style={s.clearBtn}>
+              <Text style={s.clearText}>Wis</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={handleRegenerate} activeOpacity={0.8} style={s.regenBtn}>
+            <Ionicons name="shuffle" size={14} color={colors.white} />
+            <Text style={s.regenText}>Stel voor</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Model area */}
-      <View style={s.modelArea}>
-        {/* Background */}
-        <View style={StyleSheet.absoluteFill}>
-          {bodyPhoto ? (
-            <Image
-              source={{ uri: bodyPhoto }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="contain"
-            />
-          ) : (
-            <Mannequin />
-          )}
-        </View>
-
-        {/* Clothing overlays — rendered back to front */}
-        {RENDER_ORDER.map((cat) => {
-          const item = selected[cat];
-          if (!item) return null;
-          const zone = ZONES[cat];
-          return (
-            <Image
-              key={cat}
-              source={{ uri: photoUri(item) }}
-              style={[
-                s.overlay,
-                {
-                  top: zone.top,
-                  left: zone.left,
-                  right: zone.right,
-                  height: zone.height,
-                  zIndex: zone.zIndex,
-                },
-              ]}
-              resizeMode="contain"
-            />
-          );
-        })}
-
-        {/* Clear button (only when items selected) */}
-        {selectedCount > 0 && (
-          <TouchableOpacity style={s.clearBtn} onPress={handleClearAll} activeOpacity={0.8}>
-            <Ionicons name="close" size={14} color={colors.textSecondary} />
-            <Text style={s.clearText}>Wis alles</Text>
-          </TouchableOpacity>
+      {/* Flat lay canvas */}
+      <View style={s.canvas}>
+        {items.length === 0 ? (
+          <View style={s.emptyCanvas}>
+            <Ionicons name="shirt-outline" size={36} color="#C8C4BC" />
+            <Text style={s.emptyCanvasText}>
+              Tik op items hieronder om een outfit samen te stellen
+            </Text>
+          </View>
+        ) : (
+          <FlatLayCanvas selected={selected} onDeselect={handleDeselect} />
         )}
 
-        {/* Item count chip */}
         {selectedCount > 0 && (
           <View style={s.countChip}>
             <Text style={s.countText}>{selectedCount} item{selectedCount !== 1 ? 's' : ''}</Text>
@@ -464,6 +563,20 @@ const s = StyleSheet.create({
     fontSize: typography.fontSizes.md,
     color: colors.textPrimary,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  clearBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+  },
+  clearText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeights.medium,
+  },
   regenBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -478,33 +591,22 @@ const s = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.white,
   },
-  modelArea: {
+  canvas: {
     flex: 1,
-    backgroundColor: '#F4F1EC',
-    overflow: 'hidden',
+    backgroundColor: '#F7F4EF',
   },
-  overlay: {
-    position: 'absolute',
-    bottom: undefined,
-  },
-  clearBtn: {
-    position: 'absolute',
-    bottom: spacing.md,
-    right: spacing.md,
-    flexDirection: 'row',
+  emptyCanvas: {
+    flex: 1,
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-    borderRadius: 14,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
+    justifyContent: 'center',
+    gap: spacing.md,
+    padding: spacing.xl,
   },
-  clearText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.textSecondary,
-    fontWeight: typography.fontWeights.medium,
+  emptyCanvasText: {
+    fontSize: typography.fontSizes.sm,
+    color: '#B0A89E',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   countChip: {
     position: 'absolute',
