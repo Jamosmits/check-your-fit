@@ -18,11 +18,14 @@ async function toBase64(uri: string): Promise<string> {
   return readAsStringAsync(uri, { encoding: 'base64' });
 }
 
-/** Sends the photo to GPT-4o Vision and returns a detailed clothing description. */
-async function describeItem(imageUri: string, openaiKey: string): Promise<string> {
-  console.log('[productPhoto] Step 1: calling GPT-4o Vision...');
+/**
+ * Sends the photo to GPT-4o Vision and returns a detailed clothing description
+ * suitable for use as a DALL-E 3 prompt (type, colour, material, brand, style).
+ */
+export async function describeClothingItem(imageUri: string, openaiKey: string): Promise<string> {
+  console.log('[productPhoto] describeClothingItem: calling GPT-4o Vision...');
   const base64 = await toBase64(imageUri);
-  console.log('[productPhoto] Image encoded, base64 length:', base64.length);
+  console.log('[productPhoto] Image encoded, length:', base64.length);
 
   const res = await fetch(OPENAI_CHAT, {
     method: 'POST',
@@ -39,33 +42,36 @@ async function describeItem(imageUri: string, openaiKey: string): Promise<string
           },
           {
             type: 'text',
-            text: 'Describe this clothing item in precise detail for a product photo prompt. Include: garment type, color(s), material or texture, style details, visible patterns or branding. Be specific and concise (2-3 sentences max).',
+            text: 'Describe this clothing item in precise detail for a fashion product photo. Include: exact garment type, colour(s), material/texture, visible brand or logo, style details, fit, and any distinctive design elements. Be specific and concise (2-3 sentences).',
           },
         ],
       }],
     }),
   });
 
-  console.log('[productPhoto] GPT-4o Vision response status:', res.status);
+  console.log('[productPhoto] GPT-4o Vision status:', res.status);
   const rawText = await res.text();
-  console.log('[productPhoto] GPT-4o Vision raw response:', rawText.slice(0, 400));
+  console.log('[productPhoto] GPT-4o Vision response:', rawText.slice(0, 400));
 
   if (!res.ok) throw new Error(`GPT-4o Vision error ${res.status}: ${rawText.slice(0, 200)}`);
 
   const json = JSON.parse(rawText) as { choices: { message: { content: string } }[] };
   const description = json.choices[0]?.message?.content?.trim() ?? 'a clothing item';
-  console.log('[productPhoto] Item description:', description);
+  console.log('[productPhoto] Description:', description);
   return description;
 }
 
-/** Calls DALL-E 3 with the given description and returns a local cache URI. */
-async function generateWithDalle3(description: string, openaiKey: string): Promise<string> {
+/**
+ * Calls DALL-E 3 with the given item description and returns a local cache URI
+ * of the generated professional product photo.
+ */
+export async function generateDalle3Photo(description: string, openaiKey: string): Promise<string> {
   const prompt =
-    `Professional e-commerce product photo of: ${description}. ` +
-    'Ghost mannequin display, pure white background (#FFFFFF), professional studio lighting, ' +
-    'sharp focus, high resolution, no shadows, centered.';
+    `Professional high-end fashion e-commerce product photo of a ${description}. ` +
+    'Displayed on invisible ghost mannequin. Pure white background, perfect studio lighting, ' +
+    'sharp crisp edges, no shadows, centered, exactly like Zara or H&M product photos.';
 
-  console.log('[productPhoto] Step 2: calling DALL-E 3 with prompt:', prompt.slice(0, 120), '...');
+  console.log('[productPhoto] generateDalle3Photo: prompt:', prompt.slice(0, 150), '...');
 
   const res = await fetch(OPENAI_IMAGES, {
     method: 'POST',
@@ -74,13 +80,13 @@ async function generateWithDalle3(description: string, openaiKey: string): Promi
       model: 'dall-e-3',
       prompt,
       size: '1024x1024',
-      quality: 'standard',
+      quality: 'hd',
       response_format: 'b64_json',
       n: 1,
     }),
   });
 
-  console.log('[productPhoto] DALL-E 3 response status:', res.status);
+  console.log('[productPhoto] DALL-E 3 status:', res.status);
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
@@ -90,27 +96,11 @@ async function generateWithDalle3(description: string, openaiKey: string): Promi
 
   const json = (await res.json()) as { data: { b64_json: string }[] };
   const b64 = json.data?.[0]?.b64_json;
-  console.log('[productPhoto] DALL-E 3 returned b64 length:', b64?.length ?? 0);
+  console.log('[productPhoto] DALL-E 3 b64 length:', b64?.length ?? 0);
   if (!b64) throw new Error('No image data from DALL-E 3');
 
   const dest = `${cacheDirectory}product-${Date.now()}.png`;
   await writeAsStringAsync(dest, b64, { encoding: 'base64' });
   console.log('[productPhoto] Saved to cache:', dest);
   return dest;
-}
-
-/**
- * Full pipeline: GPT-4o Vision describes the item → DALL-E 3 generates a
- * professional ghost mannequin product photo. Throws on failure so the caller
- * can show a user-visible error.
- */
-export async function generateProductPhoto(
-  imageUri: string,
-  openaiKey: string,
-): Promise<string> {
-  console.log('[productPhoto] generateProductPhoto called, key present:', !!openaiKey);
-  if (!openaiKey) throw new Error('Geen OpenAI API-sleutel ingesteld. Ga naar Instellingen.');
-
-  const description = await describeItem(imageUri, openaiKey);
-  return generateWithDalle3(description, openaiKey);
 }

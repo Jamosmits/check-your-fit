@@ -435,9 +435,10 @@ const camS = StyleSheet.create({
 // ─── ProcessingScreen ─────────────────────────────────────────────────────────
 
 const STEP_LABELS = [
-  'Kledingstuk herkennen...',
-  'Productfoto genereren... ±15 sec',
-  'Toevoegen aan kledingkast...',
+  '📸 Foto analyseren...',
+  '✂️ Kledingstuk herkennen...',
+  '🎨 Productfoto genereren...',
+  '✅ Toevoegen aan kledingkast...',
 ];
 
 function ProcessingScreen({ label }: { label: string }) {
