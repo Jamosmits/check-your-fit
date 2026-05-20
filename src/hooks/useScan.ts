@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
 import { removeBackground } from '@/services/removeBgService';
+import { smartCropGarment } from '@/services/cropService';
 import { applyGhostMannequin } from '@/services/replicateService';
 
 export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'REVIEW' | 'COMPLETE';
@@ -102,8 +103,11 @@ export function useScan(): UseScanReturn {
       const sourceUri = uris[uris.length - 1];
       const bgRemovedUri = await removeBackground(sourceUri, removeBgKey);
 
-      // 3. Ghost mannequin via Replicate (alleen bij single-item modus, wearable items)
-      let finalUri = bgRemovedUri;
+      // 3. Auto-crop: verwijder witte randen + hanger bovenaan
+      const croppedUri = await smartCropGarment(bgRemovedUri);
+
+      // 4. Ghost mannequin via Replicate (alleen bij single-item modus, wearable items)
+      let finalUri = croppedUri;
       if (isSingle && replicateKey && detected.length > 0) {
         const cat = detected[0].category;
         const mannequinCat =
@@ -113,7 +117,7 @@ export function useScan(): UseScanReturn {
 
         if (mannequinCat !== -1) {
           finalUri = await applyGhostMannequin(
-            bgRemovedUri, replicateKey, mannequinCat as 0 | 1 | 2,
+            croppedUri, replicateKey, mannequinCat as 0 | 1 | 2,
           );
         }
       }

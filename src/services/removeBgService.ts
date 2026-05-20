@@ -20,9 +20,12 @@ export async function removeBackground(
       type: 'image/jpeg',
     } as unknown as Blob);
     formData.append('size', 'auto');
-    // Request white background so the image is ready to use without compositing
+    // White background — result is a JPEG ready to display without compositing
     formData.append('bg_color', 'ffffff');
     formData.append('format', 'jpg');
+    // Crop to the garment bounds so whitespace is already trimmed server-side
+    formData.append('crop', 'true');
+    formData.append('crop_margin', '5%');
 
     const res = await fetch('https://api.remove.bg/v1.0/removebg', {
       method: 'POST',
