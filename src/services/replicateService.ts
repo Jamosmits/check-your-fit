@@ -198,8 +198,8 @@ export async function applyGhostMannequin(
     }
 
     // Download to local cache so the URL stays valid after Replicate's expiry window
-    const localUri = await downloadToCache(outputUrl, 'gmk');
-    return localUri ?? imageUri;
+    const cachedOutput = await downloadToCache(outputUrl, 'gmk');
+    return cachedOutput ?? imageUri;
   } catch (e) {
     console.warn('applyGhostMannequin exception:', e);
     return imageUri;
