@@ -62,10 +62,6 @@ export async function describeClothingItem(imageUri: string, openaiKey: string):
   return description;
 }
 
-/**
- * Tries DALL-E 3 first, then falls back to DALL-E 2 on content policy errors.
- * Returns a local cache URI of the generated product photo.
- */
 export async function generateDalle3Photo(description: string, openaiKey: string): Promise<string> {
   const prompt =
     `Professional fashion product photography. ${description}. ` +
@@ -74,73 +70,40 @@ export async function generateDalle3Photo(description: string, openaiKey: string
 
   console.log('[productPhoto] generateDalle3Photo prompt:', prompt);
 
-  // ── Try DALL-E 3 ────────────────────────────────────────────────────────────
-  const res3 = await fetch(OPENAI_IMAGES, {
+  const res = await fetch(OPENAI_IMAGES, {
     method: 'POST',
     headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'dall-e-3',
       prompt,
+      n: 1,
       size: '1024x1024',
-      quality: 'hd',
-      response_format: 'b64_json',
-      n: 1,
     }),
   });
 
-  console.log('[productPhoto] DALL-E 3 status:', res3.status);
+  console.log('[productPhoto] DALL-E 3 status:', res.status);
 
-  if (res3.ok) {
-    const json3 = (await res3.json()) as { data: { b64_json: string }[] };
-    const b64_3 = json3.data?.[0]?.b64_json;
-    if (b64_3) {
-      const dest3 = `${cacheDirectory}product-${Date.now()}.png`;
-      await writeAsStringAsync(dest3, b64_3, { encoding: 'base64' });
-      console.log('[productPhoto] DALL-E 3 saved:', dest3);
-      return dest3;
-    }
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '<unreadable>');
+    console.error('[productPhoto] DALL-E 3 error:', errText);
+    Alert.alert('DALL-E 3 Error', `Status: ${res.status}\n\n${errText}`);
+    throw new Error(`DALL-E 3 ${res.status}: ${errText.slice(0, 300)}`);
   }
 
-  // ── DALL-E 3 failed — show error and try DALL-E 2 ──────────────────────────
-  const errText3 = await res3.text().catch(() => '<unreadable>');
-  console.error('[productPhoto] DALL-E 3 error:', errText3);
-  Alert.alert('DALL-E 3 Error (proberen met DALL-E 2)', `Status: ${res3.status}\n\n${errText3}`);
+  const json = (await res.json()) as { data: { url: string }[] };
+  const url = json.data?.[0]?.url;
+  if (!url) throw new Error('No image URL from DALL-E 3');
 
-  const res2 = await fetch(OPENAI_IMAGES, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'dall-e-2',
-      prompt,
-      size: '512x512',
-      n: 1,
-    }),
-  });
-
-  console.log('[productPhoto] DALL-E 2 status:', res2.status);
-
-  if (!res2.ok) {
-    const errText2 = await res2.text().catch(() => '<unreadable>');
-    console.error('[productPhoto] DALL-E 2 error:', errText2);
-    Alert.alert('DALL-E 2 Error', `Status: ${res2.status}\n\n${errText2}`);
-    throw new Error(`DALL-E 2 ${res2.status}: ${errText2.slice(0, 300)}`);
-  }
-
-  const json2 = (await res2.json()) as { data: { url: string }[] };
-  const url2 = json2.data?.[0]?.url;
-  if (!url2) throw new Error('No image URL from DALL-E 2');
-
-  // Download the URL to local cache
-  const imgRes = await fetch(url2);
-  if (!imgRes.ok) throw new Error(`Failed to download DALL-E 2 image: ${imgRes.status}`);
+  // Download URL to local cache
+  const imgRes = await fetch(url);
+  if (!imgRes.ok) throw new Error(`Failed to download image: ${imgRes.status}`);
   const buf = await imgRes.arrayBuffer();
   const bytes = new Uint8Array(buf);
   let bin = '';
   bytes.forEach((b) => { bin += String.fromCharCode(b); });
-  const b64_2 = btoa(bin);
 
-  const dest2 = `${cacheDirectory}product-${Date.now()}.png`;
-  await writeAsStringAsync(dest2, b64_2, { encoding: 'base64' });
-  console.log('[productPhoto] DALL-E 2 saved:', dest2);
-  return dest2;
+  const dest = `${cacheDirectory}product-${Date.now()}.png`;
+  await writeAsStringAsync(dest, btoa(bin), { encoding: 'base64' });
+  console.log('[productPhoto] Saved to cache:', dest);
+  return dest;
 }
