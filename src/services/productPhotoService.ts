@@ -64,9 +64,8 @@ export async function describeClothingItem(imageUri: string, openaiKey: string):
 
 export async function generateDalle3Photo(description: string, openaiKey: string): Promise<string> {
   const prompt =
-    `Professional fashion product photography. ${description}. ` +
-    `Floating display, pure white background, soft studio lighting, sharp focus, ` +
-    `centered composition, e-commerce style.`;
+    `Professional fashion e-commerce product photo. ${description}. ` +
+    `White background, studio lighting, centered.`;
 
   console.log('[productPhoto] generateDalle3Photo prompt:', prompt);
 
@@ -74,19 +73,20 @@ export async function generateDalle3Photo(description: string, openaiKey: string
     method: 'POST',
     headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      model: 'gpt-image-1',
       prompt,
       n: 1,
-      size: '512x512',
+      size: '1024x1024',
     }),
   });
 
-  console.log('[productPhoto] DALL-E 3 status:', res.status);
+  console.log('[productPhoto] gpt-image-1 status:', res.status);
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '<unreadable>');
-    console.error('[productPhoto] DALL-E 3 error:', errText);
-    Alert.alert('DALL-E 3 Error', `Status: ${res.status}\n\n${errText}`);
-    throw new Error(`DALL-E 3 ${res.status}: ${errText.slice(0, 300)}`);
+    console.error('[productPhoto] gpt-image-1 error:', errText);
+    Alert.alert('Image Generation Error', `Status: ${res.status}\n\n${errText}`);
+    throw new Error(`gpt-image-1 ${res.status}: ${errText.slice(0, 300)}`);
   }
 
   const json = (await res.json()) as { data: { url: string }[] };
