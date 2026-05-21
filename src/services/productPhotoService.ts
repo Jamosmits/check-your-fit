@@ -112,8 +112,7 @@ export async function generateDalle3Photo(description: string, openaiKey: string
     body: JSON.stringify({
       model: 'dall-e-2',
       prompt,
-      size: '1024x1024',
-      response_format: 'b64_json',
+      size: '512x512',
       n: 1,
     }),
   });
@@ -127,9 +126,18 @@ export async function generateDalle3Photo(description: string, openaiKey: string
     throw new Error(`DALL-E 2 ${res2.status}: ${errText2.slice(0, 300)}`);
   }
 
-  const json2 = (await res2.json()) as { data: { b64_json: string }[] };
-  const b64_2 = json2.data?.[0]?.b64_json;
-  if (!b64_2) throw new Error('No image data from DALL-E 2');
+  const json2 = (await res2.json()) as { data: { url: string }[] };
+  const url2 = json2.data?.[0]?.url;
+  if (!url2) throw new Error('No image URL from DALL-E 2');
+
+  // Download the URL to local cache
+  const imgRes = await fetch(url2);
+  if (!imgRes.ok) throw new Error(`Failed to download DALL-E 2 image: ${imgRes.status}`);
+  const buf = await imgRes.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  const b64_2 = btoa(bin);
 
   const dest2 = `${cacheDirectory}product-${Date.now()}.png`;
   await writeAsStringAsync(dest2, b64_2, { encoding: 'base64' });
