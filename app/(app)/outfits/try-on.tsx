@@ -9,6 +9,9 @@ import {
   ScrollView,
   Dimensions,
   Platform,
+  ActivityIndicator,
+  Modal,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,6 +20,9 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
+import { useAuthStore } from '@/store/authStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { generateTryOn } from '@/services/tryOnService';
 
 const { height: SH } = Dimensions.get('window');
 const THUMB = 76;
@@ -424,11 +430,15 @@ const rowS = StyleSheet.create({
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function TryOnScreen() {
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const items  = useWardrobeStore((s) => s.items);
+  const insets      = useSafeAreaInsets();
+  const router      = useRouter();
+  const items       = useWardrobeStore((s) => s.items);
+  const bodyPhotoUri = useAuthStore((s) => s.bodyPhotoUri);
+  const openaiKey   = useSettingsStore((s) => s.openaiKey);
 
-  const [selected, setSelected] = useState<Partial<Record<Cat, ClothingItem>>>({});
+  const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
+  const [isTryingOn,  setIsTryingOn]  = useState(false);
+  const [tryOnResult, setTryOnResult] = useState<string | null>(null);
 
   const itemsByCategory = useMemo(() => {
     const map: Partial<Record<Cat, ClothingItem[]>> = {};
@@ -473,6 +483,36 @@ export default function TryOnScreen() {
 
   const selectedCount = Object.keys(selected).length;
 
+  const buildOutfitDescription = useCallback(() => {
+    return Object.values(selected)
+      .map((item) => [item.subcategory ?? item.category, item.brand, item.color]
+        .filter(Boolean).join(' '))
+      .join(', ');
+  }, [selected]);
+
+  const handleTryOn = useCallback(async () => {
+    if (!bodyPhotoUri || !openaiKey || selectedCount === 0) return;
+    setIsTryingOn(true);
+    try {
+      const description = buildOutfitDescription();
+      const result = await generateTryOn(bodyPhotoUri, description, openaiKey);
+      setTryOnResult(result);
+    } catch (e) {
+      console.error('[TryOnScreen] handleTryOn error:', e);
+    } finally {
+      setIsTryingOn(false);
+    }
+  }, [bodyPhotoUri, openaiKey, selectedCount, buildOutfitDescription]);
+
+  const handleShare = useCallback(async () => {
+    if (!tryOnResult) return;
+    try {
+      await Share.share({ message: 'Mijn outfit van vandaag 👗', url: tryOnResult });
+    } catch {
+      // user cancelled share — no-op
+    }
+  }, [tryOnResult]);
+
   return (
     <View style={[s.screen, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -514,7 +554,70 @@ export default function TryOnScreen() {
             <Text style={s.countText}>{selectedCount} item{selectedCount !== 1 ? 's' : ''}</Text>
           </View>
         )}
+
+        {bodyPhotoUri && selectedCount > 0 && (
+          <TouchableOpacity
+            style={s.tryOnBtn}
+            onPress={handleTryOn}
+            activeOpacity={0.85}
+            disabled={isTryingOn}
+          >
+            {isTryingOn ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Ionicons name="person" size={15} color={colors.white} />
+            )}
+            <Text style={s.tryOnText}>
+              {isTryingOn ? 'Bezig...' : 'Pas op model'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Try-On Result Modal */}
+      <Modal
+        visible={!!tryOnResult}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setTryOnResult(null)}
+      >
+        <View style={[s.modalContainer, { paddingTop: insets.top }]}>
+          <View style={s.modalHeader}>
+            <TouchableOpacity
+              onPress={() => setTryOnResult(null)}
+              style={s.modalCloseBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={22} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={s.modalTitle}>Virtueel passen</Text>
+            <TouchableOpacity
+              onPress={handleShare}
+              style={s.modalShareBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="share-outline" size={22} color={colors.accent} />
+            </TouchableOpacity>
+          </View>
+          {tryOnResult && (
+            <Image
+              source={{ uri: tryOnResult }}
+              style={s.modalImage}
+              resizeMode="contain"
+            />
+          )}
+          <View style={[s.modalFooter, { paddingBottom: insets.bottom + spacing.base }]}>
+            <TouchableOpacity
+              style={s.retryBtn}
+              onPress={() => { setTryOnResult(null); handleTryOn(); }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="refresh" size={14} color={colors.accent} />
+              <Text style={s.retryText}>Opnieuw genereren</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Closet panel */}
       <View style={[s.closet, { height: CLOSET_HEIGHT + insets.bottom }]}>
@@ -676,5 +779,81 @@ const s = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
     color: colors.white,
+  },
+  tryOnBtn: {
+    position: 'absolute',
+    bottom: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 22,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  tryOnText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.white,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    flex: 1,
+    fontFamily: typography.fonts.serif.bold,
+    fontSize: typography.fontSizes.md,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  modalShareBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalImage: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.surfaceAlt,
+  },
+  modalFooter: {
+    alignItems: 'center',
+    paddingTop: spacing.base,
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+  },
+  retryText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.accent,
+    fontWeight: typography.fontWeights.medium,
   },
 });
