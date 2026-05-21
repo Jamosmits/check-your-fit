@@ -1,4 +1,4 @@
-import { readAsStringAsync, writeAsStringAsync, cacheDirectory } from 'expo-file-system/legacy';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 
 const OPENAI_CHAT   = 'https://api.openai.com/v1/chat/completions';
@@ -90,11 +90,18 @@ export async function generateDalle3Photo(description: string, openaiKey: string
   }
 
   const json = (await res.json()) as { data: { b64_json?: string; url?: string }[] };
-  const b64 = json.data?.[0]?.b64_json;
-  if (!b64) throw new Error(`No image data from gpt-image-1. Response: ${JSON.stringify(json).slice(0, 200)}`);
+  console.log('[productPhoto] gpt-image-1 response keys:', Object.keys(json));
+  console.log('[productPhoto] data[0] keys:', Object.keys(json.data?.[0] ?? {}));
 
-  const dest = `${cacheDirectory}product-${Date.now()}.png`;
-  await writeAsStringAsync(dest, b64, { encoding: 'base64' });
-  console.log('[productPhoto] Saved to cache:', dest);
-  return dest;
+  const b64 = json.data?.[0]?.b64_json;
+  if (!b64) {
+    const dump = JSON.stringify(json).slice(0, 300);
+    Alert.alert('Image Parse Error', `b64_json missing.\n\nResponse: ${dump}`);
+    throw new Error(`No b64_json in gpt-image-1 response: ${dump}`);
+  }
+
+  console.log('[productPhoto] b64 length:', b64.length);
+  const dataUri = `data:image/png;base64,${b64}`;
+  console.log('[productPhoto] Returning data URI (length):', dataUri.length);
+  return dataUri;
 }
