@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   RefreshControl,
@@ -9,6 +10,7 @@ import {
   FlatList,
   Platform,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,7 +19,7 @@ import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/i18n';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, ModelPoses } from '@/store/authStore';
 import { useHouseholdStore } from '@/store/householdStore';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useWardrobeItems } from '@/hooks/useWardrobe';
@@ -27,6 +29,8 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { useSidebar } from '@/context/SidebarContext';
+
+const { width: SW } = Dimensions.get('window');
 
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
 
@@ -103,6 +107,159 @@ function WeatherCard() {
     </Card>
   );
 }
+
+const HOME_POSE_LABELS: { key: keyof ModelPoses; label: string }[] = [
+  { key: 'front', label: 'Voor'   },
+  { key: 'side',  label: 'Zij'    },
+  { key: 'back',  label: 'Achter' },
+];
+
+function ModelHeroSection() {
+  const router        = useRouter();
+  const modelPhotoUrl = useAuthStore((s) => s.modelPhotoUrl);
+  const modelPoses    = useAuthStore((s) => s.modelPoses);
+  const [activeTab, setActiveTab] = useState<keyof ModelPoses>('front');
+
+  const photoUri = modelPoses
+    ? (modelPoses[activeTab] ?? modelPoses.front)
+    : modelPhotoUrl;
+
+  if (!photoUri) {
+    return (
+      <View style={mh.section}>
+        <Text style={styles.sectionTitle}>Mijn model</Text>
+        <TouchableOpacity
+          style={mh.empty}
+          onPress={() => router.push('/(app)/profile')}
+          activeOpacity={0.85}
+        >
+          <View style={mh.addCircle}>
+            <Ionicons name="add" size={32} color={colors.white} />
+          </View>
+          <Text style={mh.addTitle}>Voeg jouw model toe</Text>
+          <Text style={mh.addHint}>
+            Upload een foto van jezelf en pas outfits virtueel op je model
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={mh.section}>
+      <View style={mh.sectionHeader}>
+        <Text style={styles.sectionTitle}>Mijn model</Text>
+        <TouchableOpacity onPress={() => router.push('/(app)/profile')} activeOpacity={0.7}>
+          <Text style={mh.editLink}>Wijzig</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={mh.card}>
+        <TouchableOpacity
+          onPress={() => router.push('/(app)/outfits/try-on')}
+          activeOpacity={0.9}
+          style={mh.photoWrap}
+        >
+          <Image source={{ uri: photoUri }} style={mh.photo} resizeMode="cover" />
+          <View style={mh.tryOnBadge}>
+            <Ionicons name="shirt-outline" size={13} color={colors.white} />
+            <Text style={mh.tryOnBadgeText}>Outfit samenstellen</Text>
+          </View>
+        </TouchableOpacity>
+
+        {modelPoses && (
+          <View style={mh.poseRow}>
+            {HOME_POSE_LABELS.map(({ key, label }) => (
+              <TouchableOpacity
+                key={key}
+                style={[mh.poseTab, activeTab === key && mh.poseTabActive]}
+                onPress={() => setActiveTab(key)}
+                activeOpacity={0.8}
+                disabled={!modelPoses[key]}
+              >
+                <Text style={[mh.poseTabText, activeTab === key && mh.poseTabTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const CARD_W = SW - spacing.screen * 2;
+const mh = StyleSheet.create({
+  section: { marginBottom: spacing.xl },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.screen, marginBottom: spacing.sm,
+  },
+  editLink: { fontSize: typography.fontSizes.xs, color: colors.accent, fontWeight: typography.fontWeights.semibold },
+  empty: {
+    marginHorizontal: spacing.screen,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    alignItems: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  addCircle: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: colors.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  addHint: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  card: {
+    marginHorizontal: spacing.screen,
+    gap: spacing.sm,
+  },
+  photoWrap: {
+    width: CARD_W,
+    height: Math.round(CARD_W * 1.1),
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceAlt,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12 },
+      android: { elevation: 4 },
+    }),
+  },
+  photo: { width: '100%', height: '100%' },
+  tryOnBadge: {
+    position: 'absolute', bottom: spacing.md, right: spacing.md,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 14, paddingHorizontal: spacing.sm, paddingVertical: 5,
+  },
+  tryOnBadgeText: { fontSize: typography.fontSizes.xs, color: colors.white, fontWeight: typography.fontWeights.semibold },
+  poseRow: { flexDirection: 'row', gap: spacing.sm },
+  poseTab: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: spacing.sm, borderRadius: 10,
+    borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  poseTabActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  poseTabText: { fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold, color: colors.textSecondary },
+  poseTabTextActive: { color: colors.white },
+});
 
 function ForgottenItemRow({
   item,
@@ -189,6 +346,9 @@ export default function HomeScreen() {
             <Avatar name={user?.name} imageUrl={user?.avatarUrl} size={44} />
           </TouchableOpacity>
         </View>
+
+        {/* Model hero */}
+        <ModelHeroSection />
 
         {/* Weather */}
         <View style={styles.section}>

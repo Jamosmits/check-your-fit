@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Dimensions,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -19,12 +20,14 @@ import { fontSizes, fontWeights } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
+import { useSettingsStore } from '@/store/settingsStore';
 import { useWardrobeStore } from '@/store/wardrobeStore';
 import { useWardrobeItems } from '@/hooks/useWardrobe';
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ClothingCard } from '@/components/wardrobe/ClothingCard';
+import { processBodyPhoto, generateModelPoses } from '@/services/modelPhotoService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
@@ -46,9 +49,28 @@ function StatBox({
   );
 }
 
+const POSE_LABELS: { key: 'front' | 'side' | 'back'; label: string }[] = [
+  { key: 'front', label: 'Voor' },
+  { key: 'side',  label: 'Zij'  },
+  { key: 'back',  label: 'Achter' },
+];
+
 function BodyPhotoSection() {
-  const bodyPhotoUri = useAuthStore((s) => s.bodyPhotoUri);
-  const setBodyPhoto = useAuthStore((s) => s.setBodyPhoto);
+  const bodyPhotoUri    = useAuthStore((s) => s.bodyPhotoUri);
+  const modelPhotoUrl   = useAuthStore((s) => s.modelPhotoUrl);
+  const modelPoses      = useAuthStore((s) => s.modelPoses);
+  const setBodyPhoto    = useAuthStore((s) => s.setBodyPhoto);
+  const setModelPhotoUrl = useAuthStore((s) => s.setModelPhotoUrl);
+  const setModelPoses   = useAuthStore((s) => s.setModelPoses);
+  const openaiKey       = useSettingsStore((s) => s.openaiKey);
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingLabel, setProcessingLabel] = useState('');
+  const [activeTab, setActiveTab] = useState<'front' | 'side' | 'back'>('front');
+
+  const activePhotoUri = modelPoses
+    ? (modelPoses[activeTab] ?? modelPoses.front)
+    : modelPhotoUrl;
 
   const pickBodyPhoto = useCallback(async (source: 'camera' | 'gallery') => {
     let result: ImagePicker.ImagePickerResult;
@@ -66,29 +88,60 @@ function BodyPhotoSection() {
       });
     }
     if (!result.canceled && result.assets[0]) {
-      setBodyPhoto(result.assets[0].uri);
+      const uri = result.assets[0].uri;
+      await setBodyPhoto(uri);
+      if (openaiKey) {
+        try {
+          setIsProcessing(true);
+          setProcessingLabel('Model foto verwerken...');
+          const frontUri = await processBodyPhoto(uri, openaiKey);
+          await setModelPhotoUrl(frontUri);
+          await setModelPoses({ front: frontUri, side: null, back: null });
+          setActiveTab('front');
+
+          // Generate side & back poses in background
+          setProcessingLabel('Poses genereren...');
+          const { side, back } = await generateModelPoses(frontUri, openaiKey);
+          await setModelPoses({ front: frontUri, side, back });
+        } catch (e) {
+          console.warn('[BodyPhotoSection] model processing failed:', e);
+          // Still save original as front fallback
+          await setModelPhotoUrl(uri);
+          await setModelPoses({ front: uri, side: null, back: null });
+        } finally {
+          setIsProcessing(false);
+          setProcessingLabel('');
+        }
+      } else {
+        await setModelPhotoUrl(uri);
+        await setModelPoses({ front: uri, side: null, back: null });
+      }
     }
-  }, [setBodyPhoto]);
+  }, [openaiKey, setBodyPhoto, setModelPhotoUrl, setModelPoses]);
 
   const handlePress = useCallback(() => {
     Alert.alert(
-      bodyPhotoUri ? 'Lichaamsfoto wijzigen' : 'Lichaamsfoto toevoegen',
-      'Gebruikt voor virtual try-on. Sta rechtop in neutrale kleding.',
+      bodyPhotoUri ? 'Modelfoto wijzigen' : 'Modelfoto toevoegen',
+      'Wordt automatisch omgezet naar een professionele modelfoto.',
       [
         { text: 'Camera',  onPress: () => pickBodyPhoto('camera')  },
         { text: 'Galerij', onPress: () => pickBodyPhoto('gallery') },
-        ...(bodyPhotoUri ? [{ text: 'Verwijder foto', style: 'destructive' as const, onPress: () => setBodyPhoto(null) }] : []),
+        ...(bodyPhotoUri ? [{ text: 'Verwijder foto', style: 'destructive' as const, onPress: async () => {
+          await setBodyPhoto(null);
+          await setModelPhotoUrl(null);
+          await setModelPoses(null);
+        }}] : []),
         { text: 'Annuleer', style: 'cancel' },
       ],
     );
-  }, [bodyPhotoUri, pickBodyPhoto, setBodyPhoto]);
+  }, [bodyPhotoUri, pickBodyPhoto, setBodyPhoto, setModelPhotoUrl, setModelPoses]);
 
   return (
     <Card style={bodyStyles.card}>
       <View style={bodyStyles.header}>
         <Ionicons name="body-outline" size={20} color={colors.accent} />
         <View style={bodyStyles.headerText}>
-          <Text style={bodyStyles.title}>Lichaamsfoto</Text>
+          <Text style={bodyStyles.title}>Mijn model</Text>
           <Text style={bodyStyles.subtitle}>Voor virtual try-on</Text>
         </View>
         <TouchableOpacity onPress={handlePress} style={bodyStyles.addBtn} activeOpacity={0.8}>
@@ -97,19 +150,43 @@ function BodyPhotoSection() {
         </TouchableOpacity>
       </View>
 
-      {bodyPhotoUri ? (
-        <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={bodyStyles.photoWrap}>
-          <Image source={{ uri: bodyPhotoUri }} style={bodyStyles.photo} resizeMode="cover" />
-          <View style={bodyStyles.photoOverlay}>
-            <Ionicons name="checkmark-circle" size={28} color="#4CD964" />
-            <Text style={bodyStyles.photoOverlayText}>Foto opgeslagen</Text>
-          </View>
-        </TouchableOpacity>
+      {isProcessing ? (
+        <View style={bodyStyles.processingWrap}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={bodyStyles.processingText}>{processingLabel}</Text>
+        </View>
+      ) : activePhotoUri ? (
+        <>
+          <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={bodyStyles.photoWrap}>
+            <Image source={{ uri: activePhotoUri }} style={bodyStyles.photo} resizeMode="cover" />
+          </TouchableOpacity>
+          {modelPoses && (
+            <View style={bodyStyles.poseRow}>
+              {POSE_LABELS.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[bodyStyles.poseTab, activeTab === key && bodyStyles.poseTabActive]}
+                  onPress={() => setActiveTab(key)}
+                  activeOpacity={0.8}
+                  disabled={!modelPoses[key]}
+                >
+                  {!modelPoses[key] ? (
+                    <ActivityIndicator size="small" color={colors.textMuted} />
+                  ) : (
+                    <Text style={[bodyStyles.poseTabText, activeTab === key && bodyStyles.poseTabTextActive]}>
+                      {label}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </>
       ) : (
         <TouchableOpacity onPress={handlePress} style={bodyStyles.placeholder} activeOpacity={0.8}>
           <Ionicons name="person-outline" size={48} color={colors.textMuted} />
           <Text style={bodyStyles.placeholderText}>Tik om een foto toe te voegen</Text>
-          <Text style={bodyStyles.placeholderHint}>Sta rechtop · neutrale achtergrond · goede belichting</Text>
+          <Text style={bodyStyles.placeholderHint}>Wordt automatisch omgezet naar professionele modelfoto</Text>
         </TouchableOpacity>
       )}
     </Card>
@@ -418,16 +495,30 @@ const bodyStyles = StyleSheet.create({
   addBtnText: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.white },
   photoWrap: {
     borderRadius: 12, overflow: 'hidden',
-    height: 200, backgroundColor: colors.surfaceAlt,
+    aspectRatio: 2 / 3, backgroundColor: colors.surfaceAlt,
+    maxHeight: 320,
   },
   photo: { width: '100%', height: '100%' },
-  photoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    alignItems: 'center', justifyContent: 'flex-end',
-    paddingBottom: spacing.md, gap: spacing.xs,
+  processingWrap: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: spacing.xl, gap: spacing.md,
   },
-  photoOverlayText: { color: colors.white, fontSize: fontSizes.sm, fontWeight: fontWeights.medium },
+  processingText: { fontSize: fontSizes.sm, color: colors.textSecondary },
+  poseRow: {
+    flexDirection: 'row', gap: spacing.sm,
+  },
+  poseTab: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: 10, borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    minHeight: 36,
+  },
+  poseTabActive: {
+    backgroundColor: colors.accent, borderColor: colors.accent,
+  },
+  poseTabText: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.textSecondary },
+  poseTabTextActive: { color: colors.white },
   placeholder: {
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.border,
     borderRadius: 12, padding: spacing.xl,

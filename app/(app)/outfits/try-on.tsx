@@ -10,7 +10,6 @@ import {
   Dimensions,
   Platform,
   ActivityIndicator,
-  Modal,
   Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -536,88 +535,72 @@ export default function TryOnScreen() {
         </View>
       </View>
 
-      {/* Canvas */}
+      {/* Canvas — shows flat-lay OR try-on result */}
       <View style={s.canvas}>
-        {items.length === 0 ? (
-          <View style={s.emptyCanvas}>
-            <Ionicons name="shirt-outline" size={36} color="#C8C4BC" />
-            <Text style={s.emptyCanvasText}>
-              Tik op items hieronder om een outfit samen te stellen
-            </Text>
-          </View>
+        {tryOnResult ? (
+          <>
+            <Image source={{ uri: tryOnResult }} style={s.tryOnImage} resizeMode="contain" />
+            <View style={s.tryOnResultBar}>
+              <TouchableOpacity style={s.tryOnResultBtn} onPress={handleShare} activeOpacity={0.8}>
+                <Ionicons name="share-outline" size={16} color={colors.accent} />
+                <Text style={s.tryOnResultBtnText}>Delen</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.tryOnResultBtn}
+                onPress={() => { setTryOnResult(null); handleTryOn(); }}
+                activeOpacity={0.8}
+                disabled={isTryingOn}
+              >
+                {isTryingOn
+                  ? <ActivityIndicator size="small" color={colors.accent} />
+                  : <Ionicons name="refresh" size={16} color={colors.accent} />}
+                <Text style={s.tryOnResultBtnText}>{isTryingOn ? 'Bezig...' : 'Opnieuw'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.tryOnResultBtn} onPress={() => setTryOnResult(null)} activeOpacity={0.8}>
+                <Ionicons name="shirt-outline" size={16} color={colors.textSecondary} />
+                <Text style={[s.tryOnResultBtnText, { color: colors.textSecondary }]}>Flat-lay</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         ) : (
-          <FlatLayCanvas selected={selected} onDeselect={handleDeselect} />
-        )}
-
-        {selectedCount > 0 && (
-          <View style={s.countChip}>
-            <Text style={s.countText}>{selectedCount} item{selectedCount !== 1 ? 's' : ''}</Text>
-          </View>
-        )}
-
-        {bodyPhotoUri && selectedCount > 0 && (
-          <TouchableOpacity
-            style={s.tryOnBtn}
-            onPress={handleTryOn}
-            activeOpacity={0.85}
-            disabled={isTryingOn}
-          >
-            {isTryingOn ? (
-              <ActivityIndicator size="small" color={colors.white} />
+          <>
+            {items.length === 0 ? (
+              <View style={s.emptyCanvas}>
+                <Ionicons name="shirt-outline" size={36} color="#C8C4BC" />
+                <Text style={s.emptyCanvasText}>
+                  Tik op items hieronder om een outfit samen te stellen
+                </Text>
+              </View>
             ) : (
-              <Ionicons name="person" size={15} color={colors.white} />
+              <FlatLayCanvas selected={selected} onDeselect={handleDeselect} />
             )}
-            <Text style={s.tryOnText}>
-              {isTryingOn ? 'Bezig...' : 'Pas op model'}
-            </Text>
-          </TouchableOpacity>
+
+            {selectedCount > 0 && (
+              <View style={s.countChip}>
+                <Text style={s.countText}>{selectedCount} item{selectedCount !== 1 ? 's' : ''}</Text>
+              </View>
+            )}
+
+            {bodyPhotoUri && selectedCount > 0 && (
+              <TouchableOpacity
+                style={s.tryOnBtn}
+                onPress={handleTryOn}
+                activeOpacity={0.85}
+                disabled={isTryingOn}
+              >
+                {isTryingOn ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Ionicons name="person" size={15} color={colors.white} />
+                )}
+                <Text style={s.tryOnText}>
+                  {isTryingOn ? 'Bezig...' : 'Pas op model'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
-
-      {/* Try-On Result Modal */}
-      <Modal
-        visible={!!tryOnResult}
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setTryOnResult(null)}
-      >
-        <View style={[s.modalContainer, { paddingTop: insets.top }]}>
-          <View style={s.modalHeader}>
-            <TouchableOpacity
-              onPress={() => setTryOnResult(null)}
-              style={s.modalCloseBtn}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="close" size={22} color={colors.textPrimary} />
-            </TouchableOpacity>
-            <Text style={s.modalTitle}>Virtueel passen</Text>
-            <TouchableOpacity
-              onPress={handleShare}
-              style={s.modalShareBtn}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="share-outline" size={22} color={colors.accent} />
-            </TouchableOpacity>
-          </View>
-          {tryOnResult && (
-            <Image
-              source={{ uri: tryOnResult }}
-              style={s.modalImage}
-              resizeMode="contain"
-            />
-          )}
-          <View style={[s.modalFooter, { paddingBottom: insets.bottom + spacing.base }]}>
-            <TouchableOpacity
-              style={s.retryBtn}
-              onPress={() => { setTryOnResult(null); handleTryOn(); }}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="refresh" size={14} color={colors.accent} />
-              <Text style={s.retryText}>Opnieuw genereren</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       {/* Closet panel */}
       <View style={[s.closet, { height: CLOSET_HEIGHT + insets.bottom }]}>
@@ -806,54 +789,28 @@ const s = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.white,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-  },
-  modalCloseBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
-    flex: 1,
-    fontFamily: typography.fonts.serif.bold,
-    fontSize: typography.fontSizes.md,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  modalShareBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalImage: {
+  tryOnImage: {
     flex: 1,
     width: '100%',
     backgroundColor: colors.surfaceAlt,
   },
-  modalFooter: {
-    alignItems: 'center',
-    paddingTop: spacing.base,
+  tryOnResultBar: {
+    flexDirection: 'row',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  retryBtn: {
+  tryOnResultBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: spacing.sm + 2,
   },
-  retryText: {
-    fontSize: typography.fontSizes.sm,
+  tryOnResultBtnText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
     color: colors.accent,
-    fontWeight: typography.fontWeights.medium,
   },
 });

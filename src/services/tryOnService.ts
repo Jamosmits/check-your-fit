@@ -1,20 +1,33 @@
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import {
+  readAsStringAsync,
+  writeAsStringAsync,
+  cacheDirectory,
+} from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 
 const OPENAI_EDITS = 'https://api.openai.com/v1/images/edits';
 
-async function uriToBlob(uri: string): Promise<{ base64: string; mimeType: string }> {
-  if (uri.startsWith('http://') || uri.startsWith('https://')) {
-    const res = await fetch(uri);
-    if (!res.ok) throw new Error(`Image fetch failed: ${res.status}`);
-    const buf = await res.arrayBuffer();
-    const bytes = new Uint8Array(buf);
-    let bin = '';
-    bytes.forEach((b) => { bin += String.fromCharCode(b); });
-    return { base64: btoa(bin), mimeType: 'image/jpeg' };
+async function ensureLocalFile(uri: string): Promise<string> {
+  if (uri.startsWith('file://') || uri.startsWith('/')) return uri;
+
+  if (uri.startsWith('data:')) {
+    const b64 = uri.split(',')[1] ?? '';
+    const path = `${cacheDirectory}tmp-tryon-${Date.now()}.jpg`;
+    await writeAsStringAsync(path, b64, { encoding: 'base64' });
+    return path;
   }
-  const base64 = await readAsStringAsync(uri, { encoding: 'base64' });
-  return { base64, mimeType: 'image/jpeg' };
+
+  // http/https — download to disk
+  const res = await fetch(uri);
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  const b64 = btoa(bin);
+  const path = `${cacheDirectory}tmp-tryon-${Date.now()}.jpg`;
+  await writeAsStringAsync(path, b64, { encoding: 'base64' });
+  return path;
 }
 
 export async function generateTryOn(
@@ -24,8 +37,8 @@ export async function generateTryOn(
 ): Promise<string> {
   console.log('[tryOn] generateTryOn: preparing body photo...');
 
-  const { base64, mimeType } = await uriToBlob(bodyPhotoUri);
-  console.log('[tryOn] Body photo encoded, length:', base64.length);
+  const fileUri = await ensureLocalFile(bodyPhotoUri);
+  console.log('[tryOn] Local file ready:', fileUri.slice(0, 60));
 
   const prompt =
     `Show this person wearing the following outfit: ${outfitDescription}. ` +
@@ -36,11 +49,7 @@ export async function generateTryOn(
 
   const formData = new FormData();
   formData.append('model', 'gpt-image-1');
-  formData.append('image', {
-    uri: bodyPhotoUri.startsWith('data:') ? bodyPhotoUri : `data:${mimeType};base64,${base64}`,
-    type: mimeType,
-    name: 'body.jpg',
-  } as unknown as Blob);
+  formData.append('image', { uri: fileUri, type: 'image/jpeg', name: 'body.jpg' } as unknown as Blob);
   formData.append('prompt', prompt);
   formData.append('n', '1');
   formData.append('size', '1024x1024');
@@ -70,6 +79,9 @@ export async function generateTryOn(
     throw new Error(`No b64_json in gpt-image-1 edits response: ${dump}`);
   }
 
-  console.log('[tryOn] b64 length:', b64.length);
-  return `data:image/png;base64,${b64}`;
+  // Save to cache for persistence and return file URI
+  const path = `${cacheDirectory}tryon-${Date.now()}.png`;
+  await writeAsStringAsync(path, b64, { encoding: 'base64' });
+  console.log('[tryOn] Saved to:', path);
+  return path;
 }

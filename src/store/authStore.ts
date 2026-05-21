@@ -8,22 +8,34 @@ export interface User {
   avatarUrl?: string;
 }
 
+export interface ModelPoses {
+  front: string;
+  side: string | null;
+  back: string | null;
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
   isDemo: boolean;
   isLoading: boolean;
   bodyPhotoUri: string | null;
+  modelPhotoUrl: string | null;
+  modelPoses: ModelPoses | null;
   setBodyPhoto: (uri: string | null) => Promise<void>;
+  setModelPhotoUrl: (url: string | null) => Promise<void>;
+  setModelPoses: (poses: ModelPoses | null) => Promise<void>;
   setAuth: (user: User, token: string) => Promise<void>;
   loginAsDemo: () => void;
   logout: () => Promise<void>;
   loadFromStorage: () => Promise<void>;
 }
 
-const TOKEN_KEY      = 'auth_token';
-const USER_KEY       = 'auth_user';
-const BODY_PHOTO_KEY = 'body_photo_uri';
+const TOKEN_KEY        = 'auth_token';
+const USER_KEY         = 'auth_user';
+const BODY_PHOTO_KEY   = 'body_photo_uri';
+const MODEL_PHOTO_KEY  = 'model_photo_url';
+const MODEL_POSES_KEY  = 'model_poses_json';
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -31,6 +43,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   isDemo: false,
   isLoading: true,
   bodyPhotoUri: null,
+  modelPhotoUrl: null,
+  modelPoses: null,
 
   setBodyPhoto: async (uri) => {
     if (uri) {
@@ -39,6 +53,24 @@ export const useAuthStore = create<AuthState>((set) => ({
       await SecureStore.deleteItemAsync(BODY_PHOTO_KEY).catch(() => {});
     }
     set({ bodyPhotoUri: uri });
+  },
+
+  setModelPhotoUrl: async (url) => {
+    if (url) {
+      await SecureStore.setItemAsync(MODEL_PHOTO_KEY, url).catch(() => {});
+    } else {
+      await SecureStore.deleteItemAsync(MODEL_PHOTO_KEY).catch(() => {});
+    }
+    set({ modelPhotoUrl: url });
+  },
+
+  setModelPoses: async (poses) => {
+    if (poses) {
+      await SecureStore.setItemAsync(MODEL_POSES_KEY, JSON.stringify(poses)).catch(() => {});
+    } else {
+      await SecureStore.deleteItemAsync(MODEL_POSES_KEY).catch(() => {});
+    }
+    set({ modelPoses: poses });
   },
 
   setAuth: async (user: User, token: string) => {
@@ -79,16 +111,19 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadFromStorage: async () => {
     try {
-      const [token, userJson, bodyPhoto] = await Promise.all([
+      const [token, userJson, bodyPhoto, modelPhoto, posesJson] = await Promise.all([
         SecureStore.getItemAsync(TOKEN_KEY).catch(() => null),
         SecureStore.getItemAsync(USER_KEY).catch(() => null),
         SecureStore.getItemAsync(BODY_PHOTO_KEY).catch(() => null),
+        SecureStore.getItemAsync(MODEL_PHOTO_KEY).catch(() => null),
+        SecureStore.getItemAsync(MODEL_POSES_KEY).catch(() => null),
       ]);
+      const modelPoses = posesJson ? (JSON.parse(posesJson) as ModelPoses) : null;
       if (token && userJson) {
         const user = JSON.parse(userJson) as User;
-        set({ user, token, isLoading: false, bodyPhotoUri: bodyPhoto ?? null });
+        set({ user, token, isLoading: false, bodyPhotoUri: bodyPhoto ?? null, modelPhotoUrl: modelPhoto ?? null, modelPoses });
       } else {
-        set({ isLoading: false, bodyPhotoUri: bodyPhoto ?? null });
+        set({ isLoading: false, bodyPhotoUri: bodyPhoto ?? null, modelPhotoUrl: modelPhoto ?? null, modelPoses });
       }
     } catch {
       set({ isLoading: false });
