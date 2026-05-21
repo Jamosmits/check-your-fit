@@ -74,10 +74,9 @@ export async function generateDalle3Photo(description: string, openaiKey: string
     method: 'POST',
     headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'dall-e-3',
       prompt,
       n: 1,
-      size: '1024x1024',
+      size: '512x512',
     }),
   });
 
