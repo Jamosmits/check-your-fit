@@ -89,20 +89,12 @@ export async function generateDalle3Photo(description: string, openaiKey: string
     throw new Error(`gpt-image-1 ${res.status}: ${errText.slice(0, 300)}`);
   }
 
-  const json = (await res.json()) as { data: { url: string }[] };
-  const url = json.data?.[0]?.url;
-  if (!url) throw new Error('No image URL from DALL-E 3');
-
-  // Download URL to local cache
-  const imgRes = await fetch(url);
-  if (!imgRes.ok) throw new Error(`Failed to download image: ${imgRes.status}`);
-  const buf = await imgRes.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  const json = (await res.json()) as { data: { b64_json?: string; url?: string }[] };
+  const b64 = json.data?.[0]?.b64_json;
+  if (!b64) throw new Error(`No image data from gpt-image-1. Response: ${JSON.stringify(json).slice(0, 200)}`);
 
   const dest = `${cacheDirectory}product-${Date.now()}.png`;
-  await writeAsStringAsync(dest, btoa(bin), { encoding: 'base64' });
+  await writeAsStringAsync(dest, b64, { encoding: 'base64' });
   console.log('[productPhoto] Saved to cache:', dest);
   return dest;
 }
