@@ -431,9 +431,9 @@ const rowS = StyleSheet.create({
 export default function TryOnScreen() {
   const insets      = useSafeAreaInsets();
   const router      = useRouter();
-  const items       = useWardrobeStore((s) => s.items);
-  const bodyPhotoUri = useAuthStore((s) => s.bodyPhotoUri);
-  const openaiKey   = useSettingsStore((s) => s.openaiKey);
+  const items         = useWardrobeStore((s) => s.items);
+  const modelPhotoUrl = useAuthStore((s) => s.modelPhotoUrl);   // always the processed version
+  const openaiKey     = useSettingsStore((s) => s.openaiKey);
 
   const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
   const [isTryingOn,  setIsTryingOn]  = useState(false);
@@ -484,24 +484,33 @@ export default function TryOnScreen() {
 
   const buildOutfitDescription = useCallback(() => {
     return Object.values(selected)
-      .map((item) => [item.subcategory ?? item.category, item.brand, item.color]
-        .filter(Boolean).join(' '))
-      .join(', ');
+      .map((item) => {
+        // Use the full GPT-4o description when available for maximum accuracy
+        if (item.description) return item.description;
+        // Fallback: build from metadata fields
+        return [
+          item.colorNames?.slice(0, 2).join(' and ') ?? item.color,
+          item.subcategory ?? item.category,
+          item.brand,
+          item.notes,
+        ].filter(Boolean).join(' ');
+      })
+      .join('. ');
   }, [selected]);
 
   const handleTryOn = useCallback(async () => {
-    if (!bodyPhotoUri || !openaiKey || selectedCount === 0) return;
+    if (!modelPhotoUrl || !openaiKey || selectedCount === 0) return;
     setIsTryingOn(true);
     try {
       const description = buildOutfitDescription();
-      const result = await generateTryOn(bodyPhotoUri, description, openaiKey);
+      const result = await generateTryOn(modelPhotoUrl, description, openaiKey);
       setTryOnResult(result);
     } catch (e) {
       console.error('[TryOnScreen] handleTryOn error:', e);
     } finally {
       setIsTryingOn(false);
     }
-  }, [bodyPhotoUri, openaiKey, selectedCount, buildOutfitDescription]);
+  }, [modelPhotoUrl, openaiKey, selectedCount, buildOutfitDescription]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;
@@ -581,7 +590,7 @@ export default function TryOnScreen() {
               </View>
             )}
 
-            {bodyPhotoUri && selectedCount > 0 && (
+            {modelPhotoUrl && selectedCount > 0 && (
               <TouchableOpacity
                 style={s.tryOnBtn}
                 onPress={handleTryOn}

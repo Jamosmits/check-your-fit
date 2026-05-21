@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -150,12 +151,19 @@ export default function ItemDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
       >
-        {/* Photo */}
-        <Image
-          source={{ uri: item.imageUrl }}
-          style={styles.photo}
-          resizeMode="cover"
-        />
+        {/* Photo — show only the AI-generated product photo */}
+        {item.processedPhotoUrl ? (
+          <Image
+            source={{ uri: item.processedPhotoUrl }}
+            style={styles.photo}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={[styles.photo, styles.photoLoading]}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={styles.photoLoadingText}>Productfoto genereren...</Text>
+          </View>
+        )}
 
         <View style={styles.content}>
           {/* Category badge + title */}
@@ -310,9 +318,18 @@ const styles = StyleSheet.create({
   },
   photo: {
     width: '100%',
-    aspectRatio: 3 / 4,
+    aspectRatio: 1,
     backgroundColor: colors.surfaceAlt,
     maxHeight: 400,
+  },
+  photoLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  photoLoadingText: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   content: {
     paddingHorizontal: spacing.screen,

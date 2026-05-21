@@ -6,12 +6,14 @@ export interface ClothingItem {
   householdId?: string;
   imageUrl: string;
   thumbnailUrl?: string;
-  processedPhotoUrl?: string;  // bg-removed PNG from remove.bg
+  processedPhotoUrl?: string;
+  description?: string;         // GPT-4o Vision description for try-on accuracy
   category: 'tops' | 'bottoms' | 'outerwear' | 'shoes' | 'accessories' | 'dresses';
   subcategory?: string;
   brand?: string;
   color?: string;
   colors?: string[];
+  colorNames?: string[];
   season?: string[];
   notes?: string;
   timesWorn: number;

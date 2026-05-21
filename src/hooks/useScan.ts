@@ -98,12 +98,14 @@ export function useScan(): UseScanReturn {
         const newItem: ClothingItem = {
           id:                makeId(),
           userId,
-          imageUrl:          sourceUri,    // originele foto altijd bewaard
-          processedPhotoUrl: processedUri, // DALL-E result, remove.bg, of undefined
+          imageUrl:          sourceUri,
+          processedPhotoUrl: processedUri,
+          description,                      // GPT-4o description — used for try-on accuracy
           category:          d.category,
           subcategory:       d.subcategory,
           brand:             d.brand ?? undefined,
           colors:            d.colors,
+          colorNames:        d.colorNames,
           color:             d.colorNames[0],
           season:            d.season,
           notes:             d.styleTags.join(', '),

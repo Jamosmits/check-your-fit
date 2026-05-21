@@ -41,9 +41,10 @@ export async function generateTryOn(
   console.log('[tryOn] Local file ready:', fileUri.slice(0, 60));
 
   const prompt =
-    `Show this person wearing the following outfit: ${outfitDescription}. ` +
-    `Keep the person's face, hair and body exactly the same. ` +
-    `Only change the clothing. Professional photo, natural lighting.`;
+    `Dress this person in the following clothing: ${outfitDescription}. ` +
+    `Keep everything else exactly the same — face, hair, background, pose, body. ` +
+    `Only replace the clothing with exactly what is described. ` +
+    `Professional photo, studio lighting, white background.`;
 
   console.log('[tryOn] Prompt:', prompt.slice(0, 200));
 

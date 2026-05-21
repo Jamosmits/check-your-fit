@@ -70,10 +70,10 @@ export async function processBodyPhoto(bodyPhotoUri: string, openaiKey: string):
   console.log('[modelPhoto] processBodyPhoto start');
   const b64 = await editPhoto(
     bodyPhotoUri,
-    'Transform this person photo into a professional fashion model photo. ' +
-    'Full body visible, pure white background, professional studio lighting, ' +
-    'neutral pose, front facing, exactly like a fashion e-commerce model photo. ' +
-    'Keep the person\'s exact face and hair.',
+    'Extract the person from this photo. Place them on a pure white background. ' +
+    'Full body visible from head to toe. Professional fashion model pose, standing straight, ' +
+    'front facing. Keep exact face, hair, skin tone and body shape. ' +
+    'Professional studio lighting.',
     openaiKey,
   );
   const path = await saveToCache(b64, 'model-front');

@@ -68,6 +68,7 @@ function BodyPhotoSection() {
   const [processingLabel, setProcessingLabel] = useState('');
   const [activeTab, setActiveTab] = useState<'front' | 'side' | 'back'>('front');
 
+  // Only show the processed/AI version — never the raw original
   const activePhotoUri = modelPoses
     ? (modelPoses[activeTab] ?? modelPoses.front)
     : modelPhotoUrl;
@@ -90,31 +91,33 @@ function BodyPhotoSection() {
     if (!result.canceled && result.assets[0]) {
       const uri = result.assets[0].uri;
       await setBodyPhoto(uri);
-      if (openaiKey) {
-        try {
-          setIsProcessing(true);
-          setProcessingLabel('Model foto verwerken...');
-          const frontUri = await processBodyPhoto(uri, openaiKey);
-          await setModelPhotoUrl(frontUri);
-          await setModelPoses({ front: frontUri, side: null, back: null });
-          setActiveTab('front');
+      if (!openaiKey) {
+        Alert.alert(
+          'OpenAI key ontbreekt',
+          'Stel je OpenAI key in bij Instellingen om je modelfoto te verwerken.',
+        );
+        return;
+      }
+      try {
+        setIsProcessing(true);
+        setProcessingLabel('Model verwerken...');
+        const frontUri = await processBodyPhoto(uri, openaiKey);
+        await setModelPhotoUrl(frontUri);
+        await setModelPoses({ front: frontUri, side: null, back: null });
+        setActiveTab('front');
 
-          // Generate side & back poses in background
-          setProcessingLabel('Poses genereren...');
-          const { side, back } = await generateModelPoses(frontUri, openaiKey);
-          await setModelPoses({ front: frontUri, side, back });
-        } catch (e) {
-          console.warn('[BodyPhotoSection] model processing failed:', e);
-          // Still save original as front fallback
-          await setModelPhotoUrl(uri);
-          await setModelPoses({ front: uri, side: null, back: null });
-        } finally {
-          setIsProcessing(false);
-          setProcessingLabel('');
-        }
-      } else {
-        await setModelPhotoUrl(uri);
-        await setModelPoses({ front: uri, side: null, back: null });
+        setProcessingLabel('Poses genereren...');
+        const { side, back } = await generateModelPoses(frontUri, openaiKey);
+        await setModelPoses({ front: frontUri, side, back });
+      } catch (e) {
+        console.warn('[BodyPhotoSection] model processing failed:', e);
+        Alert.alert('Verwerking mislukt', 'Probeer opnieuw. Controleer je OpenAI key en internetverbinding.');
+        // Clear any partial state — don't show the raw original
+        await setModelPhotoUrl(null);
+        await setModelPoses(null);
+      } finally {
+        setIsProcessing(false);
+        setProcessingLabel('');
       }
     }
   }, [openaiKey, setBodyPhoto, setModelPhotoUrl, setModelPoses]);
