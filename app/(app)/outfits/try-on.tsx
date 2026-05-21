@@ -10,6 +10,7 @@ import {
   Dimensions,
   Platform,
   ActivityIndicator,
+  Alert,
   Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,7 @@ import { spacing } from '@/theme/spacing';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { generateFashnTryOn } from '@/services/fashnService';
 import { generateTryOn } from '@/services/tryOnService';
 
 const { height: SH } = Dimensions.get('window');
@@ -434,6 +436,7 @@ export default function TryOnScreen() {
   const items         = useWardrobeStore((s) => s.items);
   const modelPhotoUrl = useAuthStore((s) => s.modelPhotoUrl);   // always the processed version
   const openaiKey     = useSettingsStore((s) => s.openaiKey);
+  const fashnKey      = useSettingsStore((s) => s.fashnKey);
 
   const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
   const [isTryingOn,  setIsTryingOn]  = useState(false);
@@ -499,18 +502,35 @@ export default function TryOnScreen() {
   }, [selected]);
 
   const handleTryOn = useCallback(async () => {
-    if (!modelPhotoUrl || !openaiKey || selectedCount === 0) return;
+    if (!modelPhotoUrl || selectedCount === 0) return;
     setIsTryingOn(true);
     try {
-      const description = buildOutfitDescription();
-      const result = await generateTryOn(modelPhotoUrl, description, openaiKey);
+      let result: string;
+      if (fashnKey) {
+        // Fashn.ai: image-based virtual try-on (preferred)
+        const garments = Object.values(selected)
+          .filter((item) => item.processedPhotoUrl ?? item.imageUrl)
+          .map((item) => ({
+            imageUri: item.processedPhotoUrl ?? item.imageUrl,
+            category: item.category,
+          }));
+        result = await generateFashnTryOn(modelPhotoUrl, garments, fashnKey);
+      } else if (openaiKey) {
+        // Fallback: gpt-image-1 with text description
+        const description = buildOutfitDescription();
+        result = await generateTryOn(modelPhotoUrl, description, openaiKey);
+      } else {
+        throw new Error('Geen API key beschikbaar. Stel een Fashn.ai of OpenAI key in bij Instellingen.');
+      }
       setTryOnResult(result);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Try-on mislukt';
       console.error('[TryOnScreen] handleTryOn error:', e);
+      Alert.alert('Try-On Fout', msg);
     } finally {
       setIsTryingOn(false);
     }
-  }, [modelPhotoUrl, openaiKey, selectedCount, buildOutfitDescription]);
+  }, [modelPhotoUrl, fashnKey, openaiKey, selectedCount, selected, buildOutfitDescription]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;

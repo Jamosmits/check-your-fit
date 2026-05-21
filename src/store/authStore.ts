@@ -14,6 +14,14 @@ export interface ModelPoses {
   back: string | null;
 }
 
+export interface BodyMeasurements {
+  heightCm?: number;
+  weightKg?: number;
+  clothingSize?: 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL';
+  shoeSize?: string;
+  gender?: 'male' | 'female' | 'other';
+}
+
 interface AuthState {
   user: User | null;
   token: string | null;
@@ -22,20 +30,23 @@ interface AuthState {
   bodyPhotoUri: string | null;
   modelPhotoUrl: string | null;
   modelPoses: ModelPoses | null;
+  bodyMeasurements: BodyMeasurements | null;
   setBodyPhoto: (uri: string | null) => Promise<void>;
   setModelPhotoUrl: (url: string | null) => Promise<void>;
   setModelPoses: (poses: ModelPoses | null) => Promise<void>;
+  setBodyMeasurements: (m: BodyMeasurements) => Promise<void>;
   setAuth: (user: User, token: string) => Promise<void>;
   loginAsDemo: () => void;
   logout: () => Promise<void>;
   loadFromStorage: () => Promise<void>;
 }
 
-const TOKEN_KEY        = 'auth_token';
-const USER_KEY         = 'auth_user';
-const BODY_PHOTO_KEY   = 'body_photo_uri';
-const MODEL_PHOTO_KEY  = 'model_photo_url';
-const MODEL_POSES_KEY  = 'model_poses_json';
+const TOKEN_KEY          = 'auth_token';
+const USER_KEY           = 'auth_user';
+const BODY_PHOTO_KEY     = 'body_photo_uri';
+const MODEL_PHOTO_KEY    = 'model_photo_url';
+const MODEL_POSES_KEY    = 'model_poses_json';
+const MEASUREMENTS_KEY   = 'body_measurements_json';
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
@@ -45,6 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   bodyPhotoUri: null,
   modelPhotoUrl: null,
   modelPoses: null,
+  bodyMeasurements: null,
 
   setBodyPhoto: async (uri) => {
     if (uri) {
@@ -71,6 +83,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       await SecureStore.deleteItemAsync(MODEL_POSES_KEY).catch(() => {});
     }
     set({ modelPoses: poses });
+  },
+
+  setBodyMeasurements: async (m) => {
+    await SecureStore.setItemAsync(MEASUREMENTS_KEY, JSON.stringify(m)).catch(() => {});
+    set({ bodyMeasurements: m });
   },
 
   setAuth: async (user: User, token: string) => {
@@ -111,19 +128,21 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   loadFromStorage: async () => {
     try {
-      const [token, userJson, bodyPhoto, modelPhoto, posesJson] = await Promise.all([
+      const [token, userJson, bodyPhoto, modelPhoto, posesJson, measurementsJson] = await Promise.all([
         SecureStore.getItemAsync(TOKEN_KEY).catch(() => null),
         SecureStore.getItemAsync(USER_KEY).catch(() => null),
         SecureStore.getItemAsync(BODY_PHOTO_KEY).catch(() => null),
         SecureStore.getItemAsync(MODEL_PHOTO_KEY).catch(() => null),
         SecureStore.getItemAsync(MODEL_POSES_KEY).catch(() => null),
+        SecureStore.getItemAsync(MEASUREMENTS_KEY).catch(() => null),
       ]);
-      const modelPoses = posesJson ? (JSON.parse(posesJson) as ModelPoses) : null;
+      const modelPoses        = posesJson        ? (JSON.parse(posesJson) as ModelPoses) : null;
+      const bodyMeasurements  = measurementsJson ? (JSON.parse(measurementsJson) as BodyMeasurements) : null;
       if (token && userJson) {
         const user = JSON.parse(userJson) as User;
-        set({ user, token, isLoading: false, bodyPhotoUri: bodyPhoto ?? null, modelPhotoUrl: modelPhoto ?? null, modelPoses });
+        set({ user, token, isLoading: false, bodyPhotoUri: bodyPhoto ?? null, modelPhotoUrl: modelPhoto ?? null, modelPoses, bodyMeasurements });
       } else {
-        set({ isLoading: false, bodyPhotoUri: bodyPhoto ?? null, modelPhotoUrl: modelPhoto ?? null, modelPoses });
+        set({ isLoading: false, bodyPhotoUri: bodyPhoto ?? null, modelPhotoUrl: modelPhoto ?? null, modelPoses, bodyMeasurements });
       }
     } catch {
       set({ isLoading: false });

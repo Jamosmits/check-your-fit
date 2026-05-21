@@ -166,9 +166,9 @@ export default function SettingsScreen() {
   const logout = useAuthStore((s) => s.logout);
 
   const {
-    openaiKey, removeBgKey, replicateKey,
+    openaiKey, removeBgKey, replicateKey, fashnKey,
     isLoaded, loadKeys,
-    setOpenaiKey, setRemoveBgKey, setReplicateKey,
+    setOpenaiKey, setRemoveBgKey, setReplicateKey, setFashnKey,
   } = useSettingsStore();
 
   const [outfitReminders, setOutfitReminders] = useState(false);
@@ -312,12 +312,21 @@ export default function SettingsScreen() {
           helpText="Gratis key op remove.bg — 50 foto's/maand gratis. Verwijdert achtergrond na elke scan."
         />
         <View style={styles.divider} />
+        <View style={styles.divider} />
+        <ApiKeyInput
+          label="Fashn.ai API-sleutel"
+          placeholder="fa-..."
+          value={fashnKey}
+          onSave={setFashnKey}
+          helpText="Vereist voor virtual try-on. Maak een sleutel aan op fashn.ai — plaatst kleding op jouw model foto."
+        />
+        <View style={styles.divider} />
         <ApiKeyInput
           label="Replicate API-sleutel"
           placeholder="r8_..."
           value={replicateKey}
           onSave={setReplicateKey}
-          helpText="Gratis tier op replicate.com. Genereert een ghost mannequin productfoto (item ziet er gedragen uit, zonder zichtbare persoon) na elke scan."
+          helpText="Optioneel. Gratis tier op replicate.com."
         />
       </Card>
 

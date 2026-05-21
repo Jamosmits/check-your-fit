@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Dimensions,
   Platform,
   Alert,
@@ -19,7 +20,7 @@ import { colors } from '@/theme/colors';
 import { fontSizes, fontWeights } from '@/theme/typography';
 import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/hooks/useTranslation';
-import { useAuthStore } from '@/store/authStore';
+import { useAuthStore, BodyMeasurements } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useWardrobeStore } from '@/store/wardrobeStore';
 import { useWardrobeItems } from '@/hooks/useWardrobe';
@@ -56,13 +57,14 @@ const POSE_LABELS: { key: 'front' | 'side' | 'back'; label: string }[] = [
 ];
 
 function BodyPhotoSection() {
-  const bodyPhotoUri    = useAuthStore((s) => s.bodyPhotoUri);
-  const modelPhotoUrl   = useAuthStore((s) => s.modelPhotoUrl);
-  const modelPoses      = useAuthStore((s) => s.modelPoses);
-  const setBodyPhoto    = useAuthStore((s) => s.setBodyPhoto);
-  const setModelPhotoUrl = useAuthStore((s) => s.setModelPhotoUrl);
-  const setModelPoses   = useAuthStore((s) => s.setModelPoses);
-  const openaiKey       = useSettingsStore((s) => s.openaiKey);
+  const bodyPhotoUri      = useAuthStore((s) => s.bodyPhotoUri);
+  const modelPhotoUrl     = useAuthStore((s) => s.modelPhotoUrl);
+  const modelPoses        = useAuthStore((s) => s.modelPoses);
+  const bodyMeasurements  = useAuthStore((s) => s.bodyMeasurements);
+  const setBodyPhoto      = useAuthStore((s) => s.setBodyPhoto);
+  const setModelPhotoUrl  = useAuthStore((s) => s.setModelPhotoUrl);
+  const setModelPoses     = useAuthStore((s) => s.setModelPoses);
+  const openaiKey         = useSettingsStore((s) => s.openaiKey);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('');
@@ -101,7 +103,7 @@ function BodyPhotoSection() {
       try {
         setIsProcessing(true);
         setProcessingLabel('Model verwerken...');
-        const frontUri = await processBodyPhoto(uri, openaiKey);
+        const frontUri = await processBodyPhoto(uri, openaiKey, bodyMeasurements ?? undefined);
         await setModelPhotoUrl(frontUri);
         await setModelPoses({ front: frontUri, side: null, back: null });
         setActiveTab('front');
@@ -195,6 +197,148 @@ function BodyPhotoSection() {
     </Card>
   );
 }
+
+const SIZES: BodyMeasurements['clothingSize'][] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const GENDERS: { value: BodyMeasurements['gender']; label: string }[] = [
+  { value: 'female', label: 'Vrouw' },
+  { value: 'male',   label: 'Man'   },
+  { value: 'other',  label: 'Overig'},
+];
+
+function BodyMeasurementsSection() {
+  const measurements        = useAuthStore((s) => s.bodyMeasurements);
+  const setBodyMeasurements = useAuthStore((s) => s.setBodyMeasurements);
+
+  const [draft, setDraft] = useState<BodyMeasurements>(measurements ?? {});
+  const [saved, setSaved]  = useState(false);
+
+  const handleSave = useCallback(async () => {
+    await setBodyMeasurements(draft);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }, [draft, setBodyMeasurements]);
+
+  return (
+    <Card style={measS.card}>
+      <Text style={measS.title}>Lichaamsmaten</Text>
+      <Text style={measS.subtitle}>Worden gebruikt voor nauwkeuriger try-on resultaten</Text>
+
+      {/* Gender */}
+      <View style={measS.fieldGroup}>
+        <Text style={measS.fieldLabel}>Geslacht</Text>
+        <View style={measS.chipRow}>
+          {GENDERS.map(({ value, label }) => (
+            <TouchableOpacity
+              key={value}
+              style={[measS.chip, draft.gender === value && measS.chipActive]}
+              onPress={() => setDraft((d) => ({ ...d, gender: value }))}
+              activeOpacity={0.8}
+            >
+              <Text style={[measS.chipText, draft.gender === value && measS.chipTextActive]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Height + Weight in a row */}
+      <View style={measS.row}>
+        <View style={[measS.fieldGroup, { flex: 1 }]}>
+          <Text style={measS.fieldLabel}>Lengte (cm)</Text>
+          <TextInput
+            style={measS.input}
+            value={draft.heightCm ? String(draft.heightCm) : ''}
+            onChangeText={(v) => setDraft((d) => ({ ...d, heightCm: v ? parseInt(v, 10) : undefined }))}
+            placeholder="175"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
+            maxLength={3}
+          />
+        </View>
+        <View style={[measS.fieldGroup, { flex: 1 }]}>
+          <Text style={measS.fieldLabel}>Gewicht (kg)</Text>
+          <TextInput
+            style={measS.input}
+            value={draft.weightKg ? String(draft.weightKg) : ''}
+            onChangeText={(v) => setDraft((d) => ({ ...d, weightKg: v ? parseInt(v, 10) : undefined }))}
+            placeholder="65"
+            placeholderTextColor={colors.textMuted}
+            keyboardType="numeric"
+            maxLength={3}
+          />
+        </View>
+      </View>
+
+      {/* Clothing size */}
+      <View style={measS.fieldGroup}>
+        <Text style={measS.fieldLabel}>Kledingmaat</Text>
+        <View style={measS.chipRow}>
+          {SIZES.map((size) => (
+            <TouchableOpacity
+              key={size}
+              style={[measS.chip, measS.chipSm, draft.clothingSize === size && measS.chipActive]}
+              onPress={() => setDraft((d) => ({ ...d, clothingSize: size }))}
+              activeOpacity={0.8}
+            >
+              <Text style={[measS.chipText, draft.clothingSize === size && measS.chipTextActive]}>{size}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Shoe size */}
+      <View style={measS.fieldGroup}>
+        <Text style={measS.fieldLabel}>Schoenmaat</Text>
+        <TextInput
+          style={[measS.input, { alignSelf: 'flex-start', minWidth: 80 }]}
+          value={draft.shoeSize ?? ''}
+          onChangeText={(v) => setDraft((d) => ({ ...d, shoeSize: v || undefined }))}
+          placeholder="38"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="numeric"
+          maxLength={4}
+        />
+      </View>
+
+      <TouchableOpacity
+        style={[measS.saveBtn, saved && measS.saveBtnDone]}
+        onPress={handleSave}
+        activeOpacity={0.8}
+      >
+        <Text style={measS.saveBtnText}>{saved ? '✓ Opgeslagen' : 'Opslaan'}</Text>
+      </TouchableOpacity>
+    </Card>
+  );
+}
+
+const measS = StyleSheet.create({
+  card:     { gap: spacing.md },
+  title:    { fontSize: fontSizes.base, fontWeight: fontWeights.semibold, color: colors.textPrimary },
+  subtitle: { fontSize: fontSizes.xs, color: colors.textSecondary, marginTop: -spacing.xs },
+  fieldGroup: { gap: spacing.xs },
+  fieldLabel: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.4 },
+  row: { flexDirection: 'row', gap: spacing.md },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  chip: {
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2,
+    borderRadius: 10, borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  chipSm: { paddingHorizontal: spacing.sm },
+  chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipText: { fontSize: fontSizes.sm, fontWeight: fontWeights.medium, color: colors.textSecondary },
+  chipTextActive: { color: colors.white },
+  input: {
+    height: 40, borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, fontSize: fontSizes.base,
+    color: colors.textPrimary, backgroundColor: colors.surfaceAlt,
+  },
+  saveBtn: {
+    backgroundColor: colors.accent, borderRadius: 12,
+    paddingVertical: spacing.sm + 2, alignItems: 'center',
+  },
+  saveBtnDone: { backgroundColor: colors.status.success },
+  saveBtnText: { color: colors.white, fontSize: fontSizes.base, fontWeight: fontWeights.semibold },
+});
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -349,6 +493,8 @@ export default function ProfileScreen() {
       )}
 
       {/* Body scan */}
+      <BodyMeasurementsSection />
+
       <BodyPhotoSection />
 
       {/* Settings shortcut */}

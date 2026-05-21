@@ -4,6 +4,23 @@ import {
   cacheDirectory,
 } from 'expo-file-system/legacy';
 
+export interface MeasurementsContext {
+  heightCm?: number;
+  weightKg?: number;
+  clothingSize?: string;
+  gender?: string;
+}
+
+function buildMeasurementPrefix(m?: MeasurementsContext): string {
+  if (!m) return '';
+  const parts: string[] = [];
+  if (m.gender) parts.push(m.gender === 'female' ? 'woman' : m.gender === 'male' ? 'man' : 'person');
+  if (m.heightCm) parts.push(`${m.heightCm}cm tall`);
+  if (m.weightKg) parts.push(`${m.weightKg}kg`);
+  if (m.clothingSize) parts.push(`clothing size ${m.clothingSize}`);
+  return parts.length ? `${parts.join(', ')}. ` : '';
+}
+
 const OPENAI_EDITS = 'https://api.openai.com/v1/images/edits';
 
 async function localUri(uri: string): Promise<string> {
@@ -66,11 +83,16 @@ async function saveToCache(b64: string, prefix: string): Promise<string> {
  * Transforms the user's body photo into a professional fashion model photo.
  * Returns a local file URI.
  */
-export async function processBodyPhoto(bodyPhotoUri: string, openaiKey: string): Promise<string> {
+export async function processBodyPhoto(
+  bodyPhotoUri: string,
+  openaiKey: string,
+  measurements?: MeasurementsContext,
+): Promise<string> {
   console.log('[modelPhoto] processBodyPhoto start');
+  const prefix = buildMeasurementPrefix(measurements);
   const b64 = await editPhoto(
     bodyPhotoUri,
-    'Extract the person from this photo. Place them on a pure white background. ' +
+    `${prefix}Extract the person from this photo. Place them on a pure white background. ` +
     'Full body visible from head to toe. Professional fashion model pose, standing straight, ' +
     'front facing. Keep exact face, hair, skin tone and body shape. ' +
     'Professional studio lighting.',
