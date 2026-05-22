@@ -194,6 +194,12 @@ const introS = StyleSheet.create({
 
 // ─── CameraScreen ─────────────────────────────────────────────────────────────
 
+const PHOTO_TIPS: { icon: string; text: string }[] = [
+  { icon: '💡', text: 'Zorg voor goede belichting en een neutrale achtergrond' },
+  { icon: '👟', text: 'Schoenen: fotografeer schuin van de zijkant, niet van boven' },
+  { icon: '🧥', text: 'Jassen & tops: hang het item op een hanger of leg het plat neer' },
+];
+
 function CameraScreen({
   mode,
   onCapture,
@@ -209,6 +215,8 @@ function CameraScreen({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [tipDismissed, setTipDismissed] = useState(false);
+  const [tipIndex, setTipIndex] = useState(0);
   const scanAnim = useRef(new Animated.Value(0)).current;
   const scanLoop = useRef<Animated.CompositeAnimation | null>(null);
 
@@ -304,6 +312,28 @@ function CameraScreen({
         </TouchableOpacity>
       </View>
 
+      {/* Photo tips banner */}
+      {!tipDismissed && (
+        <View style={camS.tipBanner}>
+          <Text style={camS.tipEmoji}>{PHOTO_TIPS[tipIndex].icon}</Text>
+          <Text style={camS.tipText} numberOfLines={2}>{PHOTO_TIPS[tipIndex].text}</Text>
+          <View style={camS.tipActions}>
+            {PHOTO_TIPS.length > 1 && (
+              <TouchableOpacity
+                onPress={() => setTipIndex((i) => (i + 1) % PHOTO_TIPS.length)}
+                activeOpacity={0.7}
+                style={camS.tipNext}
+              >
+                <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.7)" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setTipDismissed(true)} activeOpacity={0.7} style={camS.tipClose}>
+              <Ionicons name="close" size={16} color="rgba(255,255,255,0.8)" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Hint */}
       <View style={camS.hintBox}>
         <Text style={camS.hintText}>
@@ -394,6 +424,24 @@ const camS = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold,
   },
+  tipBanner: {
+    position: 'absolute',
+    top: 110,
+    left: spacing.base,
+    right: spacing.base,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  tipEmoji: { fontSize: 18 },
+  tipText: { flex: 1, color: 'rgba(255,255,255,0.92)', fontSize: typography.fontSizes.sm, lineHeight: 18 },
+  tipActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  tipNext: { padding: 4 },
+  tipClose: { padding: 4 },
   hintBox: {
     position: 'absolute',
     bottom: 148,

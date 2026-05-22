@@ -170,7 +170,7 @@ export function OutfitCanvas({ availableItems, onItemsChange }: OutfitCanvasProp
               disabled={isAdded}
             >
               <Image
-                source={{ uri: item.thumbnailUrl ?? item.imageUrl }}
+                source={{ uri: item.processedPhotoUrl ?? item.thumbnailUrl ?? item.imageUrl }}
                 style={styles.availableItemImage}
                 resizeMode="cover"
               />

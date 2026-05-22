@@ -207,7 +207,11 @@ export async function generateFashnTryOn(
   const sorted = [...garments].sort((a, b) => (ORDER[a.category] ?? 99) - (ORDER[b.category] ?? 99));
 
   const toProcess = sorted.filter((g) => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(g.category));
-  if (toProcess.length === 0) throw new Error('No processable garments (tops/bottoms/dresses)');
+  if (toProcess.length === 0) {
+    throw new Error(
+      'Virtual try-on werkt alleen voor kleding zoals tops, broeken en jurken. Schoenen en accessoires worden nog niet ondersteund.',
+    );
+  }
 
   const hasDress = toProcess.some((g) => g.category === 'dresses');
   const items    = hasDress ? toProcess.filter((g) => g.category === 'dresses').slice(0, 1) : toProcess.slice(0, 2);

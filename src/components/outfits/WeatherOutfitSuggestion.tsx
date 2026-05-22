@@ -58,7 +58,7 @@ function SuggestionCard({ suggestion, onUse }: SuggestionCardProps) {
           item ? (
             <Image
               key={item.id}
-              source={{ uri: item.thumbnailUrl ?? item.imageUrl }}
+              source={{ uri: item.processedPhotoUrl ?? item.thumbnailUrl ?? item.imageUrl }}
               style={styles.suggestionThumb}
               resizeMode="cover"
             />
