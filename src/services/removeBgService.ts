@@ -22,7 +22,41 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /**
- * Removes background from an image.
+ * Composites a transparent PNG blob onto a pure white background.
+ * Only works in web environments that have HTMLCanvasElement.
+ */
+async function compositeOntoWhite(transparentBlob: Blob): Promise<Blob> {
+  if (typeof document === 'undefined') return transparentBlob;
+  const url = URL.createObjectURL(transparentBlob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return transparentBlob;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('canvas.toBlob returned null'))),
+        'image/jpeg',
+        0.92,
+      );
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/**
+ * Removes background from an image and composites onto a pure white background.
  * • Primary:   @imgly/background-removal (free, local, Expo Web builds)
  * • Fallback:  remove.bg API (requires apiKey, 50 free/month)
  * • Last resort: original URI unchanged
@@ -31,9 +65,10 @@ export async function removeBackground(imageUri: string, apiKey: string): Promis
   // ── Local library (web / Expo Web) ────────────────────────────────────────
   if (imglyRemoveBackground) {
     try {
-      const resultBlob = await imglyRemoveBackground(imageUri);
-      const b64        = await blobToBase64(resultBlob);
-      const dest       = `${cacheDirectory}rbg-local-${Date.now()}.png`;
+      const transparentBlob = await imglyRemoveBackground(imageUri);
+      const whiteBlob       = await compositeOntoWhite(transparentBlob);
+      const b64             = await blobToBase64(whiteBlob);
+      const dest            = `${cacheDirectory}rbg-local-${Date.now()}.jpg`;
       await writeAsStringAsync(dest, b64, { encoding: 'base64' });
       return dest;
     } catch (e) {
@@ -74,3 +109,4 @@ export async function removeBackground(imageUri: string, apiKey: string): Promis
     return imageUri;
   }
 }
+

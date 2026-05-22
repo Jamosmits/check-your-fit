@@ -97,7 +97,7 @@ export function useScan(): UseScanReturn {
       try {
         // Check HD photo limit before generating
         checkLimit('hdPhoto');
-        processedUri = await generateDalle3Photo(description, openaiKey, replicateKey);
+        processedUri = await generateDalle3Photo(description, openaiKey, replicateKey, detected[0]?.category);
         await increment('hdPhoto');
       } catch (dalleErr) {
         if (dalleErr instanceof LimitReachedError) {

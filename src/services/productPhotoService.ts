@@ -139,13 +139,27 @@ export async function describeClothingItem(
   throw new Error('No vision API key available for item description');
 }
 
+// ─── Prompt builder ───────────────────────────────────────────────────────────
+
+function buildProductPrompt(description: string, category?: string): string {
+  const isShoe  = category === 'shoes';
+  const angle   = isShoe
+    ? 'three-quarter side angle (slightly from the front-side, showing silhouette and sole edge), '
+    : 'front view, centered, ';
+  return (
+    'Professional e-commerce product photography, pure white background (#FFFFFF), ' +
+    'soft studio lighting, sharp focus, high resolution, ' +
+    angle +
+    'no model, no mannequin, no shadows, commercial quality, similar to Zalando or ASOS product photos. ' +
+    `Product: ${description}. ` +
+    'Do NOT idealize or improve the product. Reproduce exactly as described including any wear, fading, or imperfections.'
+  );
+}
+
 // ─── Flux Pro via Replicate (primary, higher quality) ────────────────────────
 
-async function generateFluxProPhoto(description: string, replicateKey: string): Promise<string> {
-  const prompt =
-    'Product photography, pure white background, studio lighting, centered, no model, no mannequin, no shadows. ' +
-    `Exact reproduction of: ${description}. ` +
-    'Do NOT idealize or improve the product. Reproduce exactly as described including any wear, fading, or imperfections.';
+async function generateFluxProPhoto(description: string, replicateKey: string, category?: string): Promise<string> {
+  const prompt = buildProductPrompt(description, category);
 
   const res = await fetch(REPLICATE_API, {
     method:  'POST',
@@ -168,10 +182,8 @@ async function generateFluxProPhoto(description: string, replicateKey: string): 
 
 // ─── gpt-image-1 (fallback) ──────────────────────────────────────────────────
 
-async function generateGptImagePhoto(description: string, openaiKey: string): Promise<string> {
-  const prompt =
-    'Product photography, white background, studio lighting, centered, no model, no mannequin. ' +
-    `Exact reproduction of: ${description}. Do NOT idealize or improve.`;
+async function generateGptImagePhoto(description: string, openaiKey: string, category?: string): Promise<string> {
+  const prompt = buildProductPrompt(description, category);
 
   const res = await fetch(OPENAI_IMAGES, {
     method:  'POST',
@@ -201,14 +213,15 @@ export async function generateDalle3Photo(
   description: string,
   openaiKey: string,
   replicateKey = '',
+  category?: string,
 ): Promise<string> {
   if (replicateKey) {
     try {
       console.log('[productPhoto] Trying Flux Pro...');
-      return await generateFluxProPhoto(description, replicateKey);
+      return await generateFluxProPhoto(description, replicateKey, category);
     } catch (e) {
       console.warn('[productPhoto] Flux Pro failed, falling back to gpt-image-1:', e);
     }
   }
-  return generateGptImagePhoto(description, openaiKey);
+  return generateGptImagePhoto(description, openaiKey, category);
 }
