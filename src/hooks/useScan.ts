@@ -78,7 +78,7 @@ export function useScan(): UseScanReturn {
       setProcessingLabel('✂️ Kledingstuk herkennen...');
       let description: string;
       try {
-        description = await describeClothingItem(sourceUri, openaiKey);
+        description = await describeClothingItem(sourceUri, openaiKey, anthropicKey);
       } catch (e) {
         console.warn('[useScan] describeClothingItem failed, using metadata fallback:', e);
         description = detected[0] ? fallbackDescription(detected[0]) : 'clothing item';

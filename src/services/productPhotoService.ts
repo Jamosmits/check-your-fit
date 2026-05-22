@@ -1,9 +1,10 @@
 import { readAsStringAsync, writeAsStringAsync, cacheDirectory } from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 
-const OPENAI_CHAT   = 'https://api.openai.com/v1/chat/completions';
-const OPENAI_IMAGES = 'https://api.openai.com/v1/images/generations';
-const REPLICATE_API = 'https://api.replicate.com/v1/predictions';
+const OPENAI_CHAT    = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_IMAGES  = 'https://api.openai.com/v1/images/generations';
+const REPLICATE_API  = 'https://api.replicate.com/v1/predictions';
+const ANTHROPIC_CHAT = 'https://api.anthropic.com/v1/messages';
 
 const POLL_INTERVAL = 3000;
 const MAX_POLLS     = 40;
@@ -60,32 +61,91 @@ async function downloadToCache(url: string, prefix: string): Promise<string> {
   return path;
 }
 
-// ─── GPT-4o Vision description ────────────────────────────────────────────────
+// ─── Vision description ───────────────────────────────────────────────────────
 
-export async function describeClothingItem(imageUri: string, openaiKey: string): Promise<string> {
-  const base64 = await toBase64(imageUri);
+const EXACT_DESCRIPTION_PROMPT =
+  'Describe this clothing item with photographic precision so it can be exactly reproduced. ' +
+  'Include: exact garment type and silhouette; precise colors (name and approximate hex); ' +
+  'material and texture appearance (matte/shiny/knit/woven/leather etc.); ' +
+  'every visible construction detail (buttons, zippers, stitching, pockets, collar type, sleeve length); ' +
+  'any brand name, logo, graphic print or text visible; ' +
+  'the condition including any fading, distressing, or wear; ' +
+  'and the angle/orientation shown in the photo. ' +
+  'Write 4-6 precise sentences. Do NOT use subjective words like "stylish" or "elegant".';
+
+async function describeWithClaude(base64: string, anthropicKey: string): Promise<string> {
+  const res = await fetch(ANTHROPIC_CHAT, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model:      'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+          { type: 'text',  text: EXACT_DESCRIPTION_PROMPT },
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Claude Haiku vision ${res.status}`);
+  const json = (await res.json()) as { content: Array<{ text: string }> };
+  return json.content[0]?.text?.trim() ?? '';
+}
+
+async function describeWithGPT4o(base64: string, openaiKey: string): Promise<string> {
   const res = await fetch(OPENAI_CHAT, {
     method:  'POST',
     headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-4o', max_tokens: 200,
+      model: 'gpt-4o', max_tokens: 400,
       messages: [{ role: 'user', content: [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
-        { type: 'text', text: 'Describe this clothing item in precise detail for a fashion product photo. Include: exact garment type, colour(s), material/texture, visible brand or logo, style details, fit, and any distinctive design elements. Be specific and concise (2-3 sentences).' },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
+        { type: 'text', text: EXACT_DESCRIPTION_PROMPT },
       ] }],
     }),
   });
   if (!res.ok) throw new Error(`GPT-4o Vision ${res.status}`);
   const json = (await res.json()) as { choices: { message: { content: string } }[] };
-  return json.choices[0]?.message?.content?.trim() ?? 'a clothing item';
+  return json.choices[0]?.message?.content?.trim() ?? '';
+}
+
+/**
+ * Generates a photographic description of the exact clothing item for faithful reproduction.
+ * Tries Claude Haiku first (cheaper), falls back to GPT-4o.
+ */
+export async function describeClothingItem(
+  imageUri: string,
+  openaiKey: string,
+  anthropicKey = '',
+): Promise<string> {
+  const base64 = await toBase64(imageUri);
+
+  if (anthropicKey) {
+    try {
+      const desc = await describeWithClaude(base64, anthropicKey);
+      if (desc) return desc;
+    } catch (e) {
+      console.warn('[productPhoto] Claude Haiku description failed, trying GPT-4o:', e);
+    }
+  }
+
+  if (openaiKey) {
+    const desc = await describeWithGPT4o(base64, openaiKey);
+    if (desc) return desc;
+  }
+
+  throw new Error('No vision API key available for item description');
 }
 
 // ─── Flux Pro via Replicate (primary, higher quality) ────────────────────────
 
 async function generateFluxProPhoto(description: string, replicateKey: string): Promise<string> {
   const prompt =
-    `Professional fashion e-commerce product photo. ${description}. ` +
-    `Pure white background, studio lighting, centered, no model, no mannequin.`;
+    'Product photography, pure white background, studio lighting, centered, no model, no mannequin, no shadows. ' +
+    `Exact reproduction of: ${description}. ` +
+    'Do NOT idealize or improve the product. Reproduce exactly as described including any wear, fading, or imperfections.';
 
   const res = await fetch(REPLICATE_API, {
     method:  'POST',
@@ -109,7 +169,9 @@ async function generateFluxProPhoto(description: string, replicateKey: string): 
 // ─── gpt-image-1 (fallback) ──────────────────────────────────────────────────
 
 async function generateGptImagePhoto(description: string, openaiKey: string): Promise<string> {
-  const prompt = `Professional fashion e-commerce product photo. ${description}. White background, studio lighting, centered.`;
+  const prompt =
+    'Product photography, white background, studio lighting, centered, no model, no mannequin. ' +
+    `Exact reproduction of: ${description}. Do NOT idealize or improve.`;
 
   const res = await fetch(OPENAI_IMAGES, {
     method:  'POST',
@@ -132,7 +194,7 @@ async function generateGptImagePhoto(description: string, openaiKey: string): Pr
 // ─── Public: generate HD product photo ───────────────────────────────────────
 
 /**
- * Generates a product photo.
+ * Generates a faithful product photo from a description.
  * Priority: Flux Pro (Replicate) → gpt-image-1 (OpenAI fallback)
  */
 export async function generateDalle3Photo(
