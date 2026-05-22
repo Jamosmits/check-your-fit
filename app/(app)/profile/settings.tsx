@@ -167,8 +167,10 @@ export default function SettingsScreen() {
 
   const {
     openaiKey, removeBgKey, replicateKey, fashnKey, anthropicKey,
+    supabaseUrl, supabaseAnonKey,
     isLoaded, loadKeys,
     setOpenaiKey, setRemoveBgKey, setReplicateKey, setFashnKey, setAnthropicKey,
+    setSupabaseUrl, setSupabaseAnonKey,
   } = useSettingsStore();
 
   const [outfitReminders, setOutfitReminders] = useState(false);
@@ -334,6 +336,26 @@ export default function SettingsScreen() {
           value={removeBgKey}
           onSave={setRemoveBgKey}
           helpText="Fallback voor achtergrond verwijderen. 50 foto's/maand gratis op remove.bg."
+        />
+      </Card>
+
+      {/* Supabase database */}
+      <SectionHeader label="Database (Supabase)" />
+      <Card style={styles.card}>
+        <ApiKeyInput
+          label="Supabase URL"
+          placeholder="https://xxxx.supabase.co"
+          value={supabaseUrl}
+          onSave={setSupabaseUrl}
+          helpText="Project URL uit Supabase → Project Settings → API."
+        />
+        <View style={styles.divider} />
+        <ApiKeyInput
+          label="Supabase Anon Key"
+          placeholder="eyJ..."
+          value={supabaseAnonKey}
+          onSave={setSupabaseAnonKey}
+          helpText="Publieke anon key uit Supabase → Project Settings → API. Kledingitems worden bewaard na afsluiten."
         />
       </Card>
 

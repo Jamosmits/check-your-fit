@@ -7,6 +7,7 @@ import { useUsageStore, LimitReachedError } from '@/store/usageStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
 import { describeClothingItem, generateDalle3Photo } from '@/services/productPhotoService';
 import { removeBackground } from '@/services/removeBgService';
+import { wardrobeSupabaseService } from '@/services/wardrobeSupabaseService';
 
 export type ScanState = 'INTRO' | 'CAMERA' | 'PROCESSING' | 'COMPLETE';
 export type ScanMode  = 'wardrobe' | 'single';
@@ -43,8 +44,11 @@ export function useScan(): UseScanReturn {
   const anthropicKey   = useSettingsStore((s) => s.anthropicKey);
   const removeBgKey    = useSettingsStore((s) => s.removeBgKey);
   const replicateKey   = useSettingsStore((s) => s.replicateKey);
+  const supabaseUrl    = useSettingsStore((s) => s.supabaseUrl);
+  const supabaseAnon   = useSettingsStore((s) => s.supabaseAnonKey);
   const checkLimit     = useUsageStore((s) => s.checkLimit);
   const increment      = useUsageStore((s) => s.increment);
+  const supabaseReady  = !!(supabaseUrl && supabaseAnon);
 
   const [scanState,       setScanState]       = useState<ScanState>('INTRO');
   const [scanMode,        setScanMode]        = useState<ScanMode>('wardrobe');
@@ -132,6 +136,10 @@ export function useScan(): UseScanReturn {
           updatedAt:         now,
         };
         addItem(newItem);
+        if (supabaseReady) {
+          wardrobeSupabaseService.insert(newItem)
+            .catch((e) => console.warn('[useScan] Supabase insert failed:', e));
+        }
       });
 
       setAddedCount(detected.length);
@@ -147,7 +155,7 @@ export function useScan(): UseScanReturn {
       setError(msg);
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, anthropicKey, removeBgKey, replicateKey, addItem, userId, checkLimit, increment]);
+  }, [scanMode, openaiKey, anthropicKey, removeBgKey, replicateKey, supabaseReady, addItem, userId, checkLimit, increment]);
 
   const reset = useCallback(() => {
     setScanState('INTRO');

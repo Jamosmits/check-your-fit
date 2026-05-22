@@ -4,6 +4,7 @@ import { Stack, router, usePathname } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
 import { useUsageStore } from '@/store/usageStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useSyncWardrobe } from '@/hooks/useWardrobe';
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext';
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { colors } from '@/theme/colors';
@@ -12,18 +13,22 @@ function AppLayoutInner() {
   const { user, isDemo, isLoading } = useAuthStore();
   const { isOpen, close } = useSidebar();
   const pathname = usePathname();
-  const loadUsage       = useUsageStore((s) => s.loadUsage);
-  const resetIfNewMonth = useUsageStore((s) => s.resetIfNewMonth);
+  const loadUsage        = useUsageStore((s) => s.loadUsage);
+  const resetIfNewMonth  = useUsageStore((s) => s.resetIfNewMonth);
   const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
   const loadKeys         = useSettingsStore((s) => s.loadKeys);
+
+  // Load all API keys from SecureStore on app start
+  useEffect(() => {
+    if (!isSettingsLoaded) loadKeys();
+  }, [isSettingsLoaded, loadKeys]);
 
   useEffect(() => {
     loadUsage().then(() => resetIfNewMonth());
   }, [loadUsage, resetIfNewMonth]);
 
-  useEffect(() => {
-    if (!isSettingsLoaded) loadKeys();
-  }, [isSettingsLoaded, loadKeys]);
+  // Sync wardrobe from Supabase once settings are loaded
+  useSyncWardrobe();
 
   useEffect(() => {
     if (!isLoading && !user && !isDemo) {

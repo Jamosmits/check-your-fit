@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ClothingItem {
   id: string;
@@ -7,7 +9,7 @@ export interface ClothingItem {
   imageUrl: string;
   thumbnailUrl?: string;
   processedPhotoUrl?: string;
-  description?: string;         // GPT-4o Vision description for try-on accuracy
+  description?: string;
   category: 'tops' | 'bottoms' | 'outerwear' | 'shoes' | 'accessories' | 'dresses';
   subcategory?: string;
   brand?: string;
@@ -42,24 +44,34 @@ interface WardrobeState {
   resetFilters: () => void;
 }
 
-export const useWardrobeStore = create<WardrobeState>((set) => ({
-  items: [],
-  filters: {},
+export const useWardrobeStore = create<WardrobeState>()(
+  persist(
+    (set) => ({
+      items: [],
+      filters: {},
 
-  setItems: (items) => set({ items }),
+      setItems: (items) => set({ items }),
 
-  addItem: (item) =>
-    set((state) => ({ items: [item, ...state.items] })),
+      addItem: (item) =>
+        set((state) => ({ items: [item, ...state.items] })),
 
-  removeItem: (id) =>
-    set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
+      removeItem: (id) =>
+        set((state) => ({ items: state.items.filter((i) => i.id !== id) })),
 
-  updateItem: (id, updates) =>
-    set((state) => ({
-      items: state.items.map((i) => (i.id === id ? { ...i, ...updates } : i)),
-    })),
+      updateItem: (id, updates) =>
+        set((state) => ({
+          items: state.items.map((i) => (i.id === id ? { ...i, ...updates } : i)),
+        })),
 
-  setFilters: (filters) => set({ filters }),
+      setFilters: (filters) => set({ filters }),
 
-  resetFilters: () => set({ filters: {} }),
-}));
+      resetFilters: () => set({ filters: {} }),
+    }),
+    {
+      name: 'wardrobe-store-v1',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist items — filters are session-only
+      partialize: (state) => ({ items: state.items }),
+    },
+  ),
+);
