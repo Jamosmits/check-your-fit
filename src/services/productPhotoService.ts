@@ -142,41 +142,62 @@ export async function describeClothingItem(
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
 function buildProductPrompt(description: string, category?: string): string {
-  const isShoe  = category === 'shoes';
-  const angle   = isShoe
-    ? 'three-quarter side angle (slightly from the front-side, showing silhouette and sole edge), '
-    : 'front view, centered, ';
+  const isShoe = category === 'shoes';
+  if (isShoe) {
+    return (
+      'Professional e-commerce product photo, pure white background, ' +
+      'soft even studio lighting from above, sharp crisp focus, ' +
+      'three-quarter side angle (slightly from the front-side, showing silhouette and sole edge), ' +
+      'no shadows, commercial catalog quality, Zalando/ASOS style product photography. ' +
+      `The item is: ${description}`
+    );
+  }
   return (
-    'Professional e-commerce product photography, pure white background (#FFFFFF), ' +
-    'soft studio lighting, sharp focus, high resolution, ' +
-    angle +
-    'no model, no mannequin, no shadows, commercial quality, similar to Zalando or ASOS product photos. ' +
-    `Product: ${description}. ` +
-    'Do NOT idealize or improve the product. Reproduce exactly as described including any wear, fading, or imperfections.'
+    'Professional e-commerce product photo, pure white background, ' +
+    'soft even studio lighting from above, sharp crisp focus, ' +
+    'centered garment laid flat or on invisible mannequin, ' +
+    'no shadows, no wrinkles, commercial catalog quality, ' +
+    `Zalando/ASOS style product photography. The item is: ${description}`
   );
 }
 
 // ─── Flux Pro via Replicate (primary, higher quality) ────────────────────────
 
 async function generateFluxProPhoto(description: string, replicateKey: string, category?: string): Promise<string> {
-  const prompt = buildProductPrompt(description, category);
+  const isShoe      = category === 'shoes';
+  const prompt      = buildProductPrompt(description, category);
+  const aspectRatio = isShoe ? '1:1' : '2:3';
+
+  console.log('[fluxPro] prompt:', prompt);
+  console.log('[fluxPro] aspect_ratio:', aspectRatio);
 
   const res = await fetch(REPLICATE_API, {
     method:  'POST',
     headers: { Authorization: `Token ${replicateKey}`, 'Content-Type': 'application/json', Prefer: 'wait=5' },
     body: JSON.stringify({
       model: 'black-forest-labs/flux-pro',
-      input: { prompt, aspect_ratio: '1:1', output_format: 'webp' },
+      input: {
+        prompt,
+        aspect_ratio:   aspectRatio,
+        output_format:  'jpg',
+        output_quality: 100,
+      },
     }),
   });
 
   if (!res.ok) throw new Error(`Flux Pro ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const pred = (await res.json()) as { id: string; status: string; output?: unknown };
 
-  const outputUrl = pred.status === 'succeeded'
-    ? (Array.isArray(pred.output) ? pred.output[0] as string : pred.output as string)
-    : await pollReplicate(pred.id, replicateKey);
+  const pred = (await res.json()) as { id: string; status: string; output?: unknown; error?: string };
+  console.log('[fluxPro] initial response:', JSON.stringify({ id: pred.id, status: pred.status, output: pred.output, error: pred.error }));
 
+  let outputUrl: string;
+  if (pred.status === 'succeeded') {
+    outputUrl = Array.isArray(pred.output) ? pred.output[0] as string : pred.output as string;
+  } else {
+    outputUrl = await pollReplicate(pred.id, replicateKey);
+  }
+
+  console.log('[fluxPro] output URL:', outputUrl);
   return downloadToCache(outputUrl, 'flux');
 }
 
