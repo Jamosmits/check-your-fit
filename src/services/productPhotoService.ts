@@ -105,17 +105,22 @@ export async function describeClothingItem(
 // ─── gpt-image-1 image edit (image-to-image) ─────────────────────────────────
 
 const EDIT_PROMPT =
-  'Professional e-commerce product photo. Keep this EXACT same product with ' +
-  'identical colors, materials, logos and details. Place on pure white background ' +
-  '(#FFFFFF) with soft studio lighting. Sharp focus, centered, Zalando/ASOS catalog ' +
-  'style. Do not change or improve the product in any way.';
+  'Transform this clothing item into a professional ghost mannequin product photo. ' +
+  'The garment should appear naturally shaped as if worn by an invisible body. ' +
+  'Pure white background (#FFFFFF), soft even studio lighting, sharp focus, centered composition, ' +
+  'full garment visible from front. ' +
+  'Exact same product: keep identical colors, fabric texture, stitching, logos, patterns and all details from the original photo. ' +
+  'No model, no mannequin visible, no hanger, no flat lay. ' +
+  'Ghost mannequin / invisible mannequin effect only. ' +
+  'Commercial e-commerce quality identical to Zalando, ASOS, H&M.';
 
 const SHOE_EDIT_PROMPT =
-  'Professional e-commerce product photo. Keep this EXACT same product with ' +
-  'identical colors, materials, logos and details. Place on pure white background ' +
-  '(#FFFFFF) with soft studio lighting. Sharp focus, 3/4 side angle showing ' +
-  'silhouette and sole edge, Zalando/ASOS catalog style. ' +
-  'Do not change or improve the product in any way.';
+  'Transform this shoe into a professional e-commerce product photo. ' +
+  'Pure white background (#FFFFFF), soft even studio lighting, sharp focus, ' +
+  '3/4 side angle showing silhouette and sole edge. ' +
+  'Exact same product: keep identical colors, material, stitching, logos and all details from the original photo. ' +
+  'No model, no foot, no flat lay. ' +
+  'Commercial e-commerce quality identical to Zalando, ASOS, H&M.';
 
 /**
  * Generates an e-commerce product photo by editing the original image via
@@ -133,7 +138,7 @@ export async function generateDalle3Photo(
   formData.append('image', { uri: imageUri, type: 'image/jpeg', name: 'photo.jpg' } as unknown as Blob);
   formData.append('prompt', prompt);
   formData.append('size', '1024x1024');
-  formData.append('quality', 'medium');
+  formData.append('quality', 'high');
 
   console.log('[gptImageEdit] prompt:', prompt);
   console.log('[gptImageEdit] imageUri:', imageUri);
