@@ -139,72 +139,164 @@ export async function describeClothingItem(
   throw new Error('No vision API key available for item description');
 }
 
-// ─── Prompt builder ───────────────────────────────────────────────────────────
+// ─── Flux-specific vision description ────────────────────────────────────────
 
-function buildProductPrompt(description: string, category?: string): string {
-  const isShoe = category === 'shoes';
-  if (isShoe) {
-    return (
-      'Professional e-commerce product photo, pure white background, ' +
-      'soft even studio lighting from above, sharp crisp focus, ' +
-      'three-quarter side angle (slightly from the front-side, showing silhouette and sole edge), ' +
-      'no shadows, commercial catalog quality, Zalando/ASOS style product photography. ' +
-      `The item is: ${description}`
-    );
+const FLUX_DESCRIPTION_PROMPT =
+  'Analyze this clothing item in extreme detail. Describe:\n' +
+  '- Exact product type (e.g. "slide sandal", "zip-up bomber jacket")\n' +
+  '- Exact primary color and secondary colors with hex if possible\n' +
+  '- Material and texture (e.g. "smooth rubber", "knitted wool")\n' +
+  '- All visible logos, text, patterns, stripes, prints\n' +
+  '- Unique design details (zippers, buttons, stitching, holes)\n' +
+  '- Condition (new/used/worn)\n' +
+  '- Camera angle of the original photo\n' +
+  'Return ONLY a comma-separated list of descriptive terms, no sentences.';
+
+async function describeForFlux(
+  imageUri: string,
+  anthropicKey: string,
+  openaiKey: string,
+  fallback: string,
+): Promise<string> {
+  const base64 = await toBase64(imageUri);
+
+  if (anthropicKey) {
+    try {
+      const res = await fetch(ANTHROPIC_CHAT, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model:      'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+              { type: 'text',  text: FLUX_DESCRIPTION_PROMPT },
+            ],
+          }],
+        }),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { content: Array<{ text: string }> };
+        const text = json.content[0]?.text?.trim();
+        if (text) return text;
+      }
+    } catch (e) {
+      console.warn('[fluxPro] Haiku description failed:', e);
+    }
   }
-  return (
-    'Professional e-commerce product photo, pure white background, ' +
-    'soft even studio lighting from above, sharp crisp focus, ' +
-    'centered garment laid flat or on invisible mannequin, ' +
-    'no shadows, no wrinkles, commercial catalog quality, ' +
-    `Zalando/ASOS style product photography. The item is: ${description}`
-  );
+
+  if (openaiKey) {
+    try {
+      const res = await fetch(OPENAI_CHAT, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gpt-4o', max_tokens: 300,
+          messages: [{ role: 'user', content: [
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
+            { type: 'text', text: FLUX_DESCRIPTION_PROMPT },
+          ] }],
+        }),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { choices: { message: { content: string } }[] };
+        const text = json.choices[0]?.message?.content?.trim();
+        if (text) return text;
+      }
+    } catch (e) {
+      console.warn('[fluxPro] GPT-4o description fallback failed:', e);
+    }
+  }
+
+  return fallback;
 }
 
-// ─── Flux Pro via Replicate (primary, higher quality) ────────────────────────
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
+    ),
+  ]);
+}
 
-async function generateFluxProPhoto(description: string, replicateKey: string, category?: string): Promise<string> {
-  const isShoe      = category === 'shoes';
-  const prompt      = buildProductPrompt(description, category);
-  const aspectRatio = isShoe ? '1:1' : '2:3';
+// ─── Flux 1.1 Pro via Replicate (primary) ────────────────────────────────────
 
-  console.log('[fluxPro] prompt:', prompt);
-  console.log('[fluxPro] aspect_ratio:', aspectRatio);
+async function generateFluxProPhoto(
+  imageUri: string,
+  description: string,
+  replicateKey: string,
+  anthropicKey: string,
+  openaiKey: string,
+  category?: string,
+): Promise<string> {
+  const fluxTerms = await describeForFlux(imageUri, anthropicKey, openaiKey, description);
+  const isShoe    = category === 'shoes';
+  const angleTag  = isShoe
+    ? '3/4 angle view from front-side showing sole edge'
+    : '3/4 angle view from front-left, ghost mannequin effect for clothing';
 
-  const res = await fetch(REPLICATE_API, {
-    method:  'POST',
-    headers: { Authorization: `Token ${replicateKey}`, 'Content-Type': 'application/json', Prefer: 'wait=5' },
-    body: JSON.stringify({
-      model: 'black-forest-labs/flux-pro',
-      input: {
-        prompt,
-        aspect_ratio:   aspectRatio,
-        output_format:  'jpg',
-        output_quality: 100,
-      },
-    }),
-  });
+  const prompt =
+    'Professional e-commerce product photography, pure white background, ' +
+    'soft diffused studio lighting, sharp crisp focus, ' +
+    `${fluxTerms}, centered composition, ${angleTag}, ` +
+    'no shadows, no mannequin, no model, ' +
+    'commercial catalog quality identical to Zalando or ASOS, ' +
+    'photorealistic, 4k resolution';
 
-  if (!res.ok) throw new Error(`Flux Pro ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  console.log('[fluxPro] Haiku terms:', fluxTerms);
+  console.log('[fluxPro] full prompt:', prompt);
 
-  const pred = (await res.json()) as { id: string; status: string; output?: unknown; error?: string };
-  console.log('[fluxPro] initial response:', JSON.stringify({ id: pred.id, status: pred.status, output: pred.output, error: pred.error }));
+  const run = async (): Promise<string> => {
+    const res = await fetch(REPLICATE_API, {
+      method:  'POST',
+      headers: { Authorization: `Token ${replicateKey}`, 'Content-Type': 'application/json', Prefer: 'wait=5' },
+      body: JSON.stringify({
+        model: 'black-forest-labs/flux-1.1-pro',
+        input: {
+          prompt,
+          width:             768,
+          height:            1024,
+          prompt_upsampling: true,
+          safety_tolerance:  5,
+          output_format:     'jpeg',
+          output_quality:    95,
+        },
+      }),
+    });
 
-  let outputUrl: string;
-  if (pred.status === 'succeeded') {
-    outputUrl = Array.isArray(pred.output) ? pred.output[0] as string : pred.output as string;
-  } else {
-    outputUrl = await pollReplicate(pred.id, replicateKey);
-  }
+    if (!res.ok) throw new Error(`Flux 1.1 Pro ${res.status}: ${(await res.text()).slice(0, 200)}`);
 
-  console.log('[fluxPro] output URL:', outputUrl);
-  return downloadToCache(outputUrl, 'flux');
+    const pred = (await res.json()) as { id: string; status: string; output?: unknown; error?: string };
+    console.log('[fluxPro] initial response:', JSON.stringify({ id: pred.id, status: pred.status, output: pred.output, error: pred.error }));
+
+    let outputUrl: string;
+    if (pred.status === 'succeeded') {
+      outputUrl = Array.isArray(pred.output) ? pred.output[0] as string : pred.output as string;
+    } else {
+      outputUrl = await pollReplicate(pred.id, replicateKey);
+    }
+
+    console.log('[fluxPro] output URL:', outputUrl);
+    return downloadToCache(outputUrl, 'flux');
+  };
+
+  return withTimeout(run(), 30_000);
 }
 
 // ─── gpt-image-1 (fallback) ──────────────────────────────────────────────────
 
 async function generateGptImagePhoto(description: string, openaiKey: string, category?: string): Promise<string> {
-  const prompt = buildProductPrompt(description, category);
+  const isShoe = category === 'shoes';
+  const angle  = isShoe
+    ? '3/4 angle view from front-side showing sole edge,'
+    : 'centered garment laid flat or on invisible mannequin,';
+  const prompt =
+    'Professional e-commerce product photo, pure white background, ' +
+    `soft diffused studio lighting, sharp crisp focus, ${angle} ` +
+    `no shadows, no wrinkles, commercial catalog quality, Zalando/ASOS style. The item is: ${description}`;
 
   const res = await fetch(OPENAI_IMAGES, {
     method:  'POST',
@@ -227,21 +319,25 @@ async function generateGptImagePhoto(description: string, openaiKey: string, cat
 // ─── Public: generate HD product photo ───────────────────────────────────────
 
 /**
- * Generates a faithful product photo from a description.
- * Priority: Flux Pro (Replicate) → gpt-image-1 (OpenAI fallback)
+ * Generates a product photo using a 2-step workflow:
+ * 1. Claude Haiku analyses the original photo → comma-separated terms
+ * 2. Flux 1.1 Pro generates an e-commerce shot from those terms
+ * Falls back to gpt-image-1 on timeout (>30s) or Flux failure.
  */
 export async function generateDalle3Photo(
+  imageUri: string,
   description: string,
   openaiKey: string,
+  anthropicKey: string,
   replicateKey = '',
   category?: string,
 ): Promise<string> {
   if (replicateKey) {
     try {
-      console.log('[productPhoto] Trying Flux Pro...');
-      return await generateFluxProPhoto(description, replicateKey, category);
+      console.log('[productPhoto] Trying Flux 1.1 Pro...');
+      return await generateFluxProPhoto(imageUri, description, replicateKey, anthropicKey, openaiKey, category);
     } catch (e) {
-      console.warn('[productPhoto] Flux Pro failed, falling back to gpt-image-1:', e);
+      console.warn('[productPhoto] Flux 1.1 Pro failed/timed out, falling back to gpt-image-1:', e);
     }
   }
   return generateGptImagePhoto(description, openaiKey, category);
