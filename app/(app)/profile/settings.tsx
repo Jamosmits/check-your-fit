@@ -166,9 +166,9 @@ export default function SettingsScreen() {
   const logout = useAuthStore((s) => s.logout);
 
   const {
-    openaiKey, removeBgKey, replicateKey, fashnKey,
+    openaiKey, removeBgKey, replicateKey, fashnKey, anthropicKey,
     isLoaded, loadKeys,
-    setOpenaiKey, setRemoveBgKey, setReplicateKey, setFashnKey,
+    setOpenaiKey, setRemoveBgKey, setReplicateKey, setFashnKey, setAnthropicKey,
   } = useSettingsStore();
 
   const [outfitReminders, setOutfitReminders] = useState(false);
@@ -301,24 +301,15 @@ export default function SettingsScreen() {
           placeholder="sk-..."
           value={openaiKey}
           onSave={setOpenaiKey}
-          helpText="Vereist voor de kledingkastscan. Maak een sleutel aan op platform.openai.com."
+          helpText="Vereist voor modelfoto verwerking en HD productfoto's. Maak een sleutel aan op platform.openai.com."
         />
         <View style={styles.divider} />
         <ApiKeyInput
-          label="Remove.bg API-sleutel"
-          placeholder="Plak je Remove.bg sleutel"
-          value={removeBgKey}
-          onSave={setRemoveBgKey}
-          helpText="Gratis key op remove.bg — 50 foto's/maand gratis. Verwijdert achtergrond na elke scan."
-        />
-        <View style={styles.divider} />
-        <View style={styles.divider} />
-        <ApiKeyInput
-          label="Fashn.ai API-sleutel"
-          placeholder="fa-..."
-          value={fashnKey}
-          onSave={setFashnKey}
-          helpText="Vereist voor virtual try-on. Maak een sleutel aan op fashn.ai — plaatst kleding op jouw model foto."
+          label="Anthropic API-sleutel"
+          placeholder="sk-ant-..."
+          value={anthropicKey}
+          onSave={setAnthropicKey}
+          helpText="Primair voor kledingherkenning (10× goedkoper dan OpenAI). Maak een sleutel aan op console.anthropic.com."
         />
         <View style={styles.divider} />
         <ApiKeyInput
@@ -326,7 +317,23 @@ export default function SettingsScreen() {
           placeholder="r8_..."
           value={replicateKey}
           onSave={setReplicateKey}
-          helpText="Optioneel. Gratis tier op replicate.com."
+          helpText="Voor HD productfoto's (Flux Pro) en virtual try-on (IDM-VTON). Gratis tier op replicate.com."
+        />
+        <View style={styles.divider} />
+        <ApiKeyInput
+          label="Fashn.ai API-sleutel"
+          placeholder="fa-..."
+          value={fashnKey}
+          onSave={setFashnKey}
+          helpText="Fallback voor virtual try-on. Maak een sleutel aan op fashn.ai."
+        />
+        <View style={styles.divider} />
+        <ApiKeyInput
+          label="Remove.bg API-sleutel"
+          placeholder="Plak je Remove.bg sleutel"
+          value={removeBgKey}
+          onSave={setRemoveBgKey}
+          helpText="Fallback voor achtergrond verwijderen. 50 foto's/maand gratis op remove.bg."
         />
       </Card>
 

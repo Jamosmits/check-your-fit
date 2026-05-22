@@ -17,85 +17,104 @@ const WARDROBE_PROMPT = `Analyze this wardrobe/closet image. Identify every indi
 const SINGLE_ITEM_PROMPT = `Analyze this single clothing item image. Return a JSON array with exactly one object containing: category (must be one of: tops/bottoms/dresses/outerwear/shoes/accessories), subcategory (specific Dutch name), colors (array of hex codes), colorNames (Dutch color names), styleTags (array from: casual/sportief/zakelijk/elegant), season (array from: lente/zomer/herfst/winter), brand (if visible else null), confidence (0.0-1.0). Return ONLY valid JSON array.`;
 
 const MOCK_ITEMS: DetectedItem[] = [
-  { category: 'tops',      subcategory: 'Gestreept overhemd', colors: ['#FFFFFF','#003399'], colorNames: ['Wit','Marineblauw'], styleTags: ['casual','zakelijk'], season: ['lente','zomer','herfst'], brand: null,       confidence: 0.92 },
-  { category: 'bottoms',   subcategory: 'Slim-fit jeans',     colors: ['#1C3B5A'],           colorNames: ['Donkerblauw'],       styleTags: ['casual'],            season: ['lente','herfst','winter'],     brand: "Levi's",  confidence: 0.88 },
-  { category: 'outerwear', subcategory: 'Wollen blazer',       colors: ['#2C2C2C'],           colorNames: ['Zwart'],             styleTags: ['zakelijk','elegant'],season: ['herfst','winter'],            brand: null,       confidence: 0.85 },
-  { category: 'shoes',     subcategory: 'Leren chelsea boots', colors: ['#5C3317'],           colorNames: ['Cognac'],            styleTags: ['casual','zakelijk'], season: ['herfst','winter'],            brand: 'Vagabond', confidence: 0.91 },
-  { category: 'tops',      subcategory: 'Witte T-shirt',       colors: ['#FFFFFF'],           colorNames: ['Wit'],               styleTags: ['casual','sportief'], season: ['lente','zomer'],              brand: 'Uniqlo',   confidence: 0.95 },
-  { category: 'accessories',subcategory:'Leren riem',          colors: ['#2C1810'],           colorNames: ['Donkerbruin'],       styleTags: ['casual','zakelijk'], season: ['lente','zomer','herfst','winter'], brand: null, confidence: 0.78 },
+  { category: 'tops',       subcategory: 'Gestreept overhemd', colors: ['#FFFFFF','#003399'], colorNames: ['Wit','Marineblauw'], styleTags: ['casual','zakelijk'], season: ['lente','zomer','herfst'], brand: null,       confidence: 0.92 },
+  { category: 'bottoms',    subcategory: 'Slim-fit jeans',     colors: ['#1C3B5A'],           colorNames: ['Donkerblauw'],       styleTags: ['casual'],            season: ['lente','herfst','winter'],     brand: "Levi's",  confidence: 0.88 },
+  { category: 'outerwear',  subcategory: 'Wollen blazer',       colors: ['#2C2C2C'],           colorNames: ['Zwart'],             styleTags: ['zakelijk','elegant'],season: ['herfst','winter'],            brand: null,       confidence: 0.85 },
+  { category: 'shoes',      subcategory: 'Leren chelsea boots', colors: ['#5C3317'],           colorNames: ['Cognac'],            styleTags: ['casual','zakelijk'], season: ['herfst','winter'],            brand: 'Vagabond', confidence: 0.91 },
+  { category: 'tops',       subcategory: 'Witte T-shirt',       colors: ['#FFFFFF'],           colorNames: ['Wit'],               styleTags: ['casual','sportief'], season: ['lente','zomer'],              brand: 'Uniqlo',   confidence: 0.95 },
+  { category: 'accessories',subcategory: 'Leren riem',          colors: ['#2C1810'],           colorNames: ['Donkerbruin'],       styleTags: ['casual','zakelijk'], season: ['lente','zomer','herfst','winter'], brand: null, confidence: 0.78 },
 ];
 
 async function toBase64(uri: string): Promise<string> {
   return readAsStringAsync(uri, { encoding: 'base64' });
 }
 
-function parseGptResponse(text: string): DetectedItem[] {
-  // Strip markdown code fences if present
+function parseResponse(text: string): DetectedItem[] {
   const clean = text.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
   const raw = JSON.parse(clean) as Array<Record<string, unknown>>;
-
   return raw.map((obj) => ({
-    category:    (obj.category as ClothingItem['category']) ?? 'tops',
-    subcategory: (obj.subcategory as string) ?? 'Kledingstuk',
-    colors:      Array.isArray(obj.colors)    ? (obj.colors as string[])    : ['#808080'],
-    colorNames:  Array.isArray(obj.colorNames)? (obj.colorNames as string[]): ['Grijs'],
-    styleTags:   Array.isArray(obj.styleTags) ? (obj.styleTags as string[]) : ['casual'],
-    season:      Array.isArray(obj.season)    ? (obj.season as string[])    : ['lente','zomer','herfst','winter'],
-    brand:       (obj.brand as string | null) ?? null,
+    category:    (obj.category    as ClothingItem['category']) ?? 'tops',
+    subcategory: (obj.subcategory as string)                   ?? 'Kledingstuk',
+    colors:      Array.isArray(obj.colors)     ? (obj.colors     as string[]) : ['#808080'],
+    colorNames:  Array.isArray(obj.colorNames) ? (obj.colorNames as string[]) : ['Grijs'],
+    styleTags:   Array.isArray(obj.styleTags)  ? (obj.styleTags  as string[]) : ['casual'],
+    season:      Array.isArray(obj.season)     ? (obj.season     as string[]) : ['lente','zomer','herfst','winter'],
+    brand:       (obj.brand as string | null)  ?? null,
     confidence:  typeof obj.confidence === 'number' ? obj.confidence : 0.8,
   }));
 }
 
-export async function analyzeWardrobeImage(
-  imageUris: string[],
-  apiKey: string,
-  singleItem = false,
-): Promise<DetectedItem[]> {
-  if (!apiKey || imageUris.length === 0) {
-    // Mock mode: return realistic demo items
-    const count = singleItem ? 1 : Math.floor(Math.random() * 3) + 3;
-    return MOCK_ITEMS.slice(0, count).map((item) => ({
-      ...item,
-      confidence: 0.85 + Math.random() * 0.14,
-    }));
-  }
+// ─── Claude Haiku (primary, 10× cheaper) ─────────────────────────────────────
 
-  // Build content array: images + text prompt
+async function analyzeWithClaude(imageUris: string[], anthropicKey: string, singleItem: boolean): Promise<DetectedItem[]> {
+  const prompt       = singleItem ? SINGLE_ITEM_PROMPT : WARDROBE_PROMPT;
   const imageContent = await Promise.all(
     imageUris.slice(0, 10).map(async (uri) => {
-      const b64 = await toBase64(uri);
-      return {
-        type: 'image_url',
-        image_url: { url: `data:image/jpeg;base64,${b64}`, detail: 'high' },
-      };
+      const data = await toBase64(uri);
+      return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } };
     }),
   );
 
-  const prompt = singleItem ? SINGLE_ITEM_PROMPT : WARDROBE_PROMPT;
-  const content = [...imageContent, { type: 'text', text: prompt }];
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model:      'claude-haiku-4-5-20251001',
       max_tokens: 2048,
-      messages: [{ role: 'user', content }],
+      messages:   [{ role: 'user', content: [...imageContent, { type: 'text', text: prompt }] }],
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`OpenAI fout ${res.status}: ${err.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`Claude Haiku ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = (await res.json()) as { content: Array<{ text: string }> };
+  return parseResponse(json.content[0]?.text ?? '[]');
+}
+
+// ─── GPT-4o (fallback) ────────────────────────────────────────────────────────
+
+async function analyzeWithGPT4o(imageUris: string[], openaiKey: string, singleItem: boolean): Promise<DetectedItem[]> {
+  const prompt       = singleItem ? SINGLE_ITEM_PROMPT : WARDROBE_PROMPT;
+  const imageContent = await Promise.all(
+    imageUris.slice(0, 10).map(async (uri) => {
+      const b64 = await toBase64(uri);
+      return { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}`, detail: 'high' } };
+    }),
+  );
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+    body: JSON.stringify({ model: 'gpt-4o', max_tokens: 2048, messages: [{ role: 'user', content: [...imageContent, { type: 'text', text: prompt }] }] }),
+  });
+
+  if (!res.ok) throw new Error(`GPT-4o ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const json = (await res.json()) as { choices: Array<{ message: { content: string } }> };
+  return parseResponse(json.choices[0]?.message?.content ?? '[]');
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export async function analyzeWardrobeImage(
+  imageUris: string[],
+  openaiKey: string,
+  singleItem = false,
+  anthropicKey = '',
+): Promise<DetectedItem[]> {
+  if (imageUris.length === 0) {
+    const count = singleItem ? 1 : Math.floor(Math.random() * 3) + 3;
+    return MOCK_ITEMS.slice(0, count).map((item) => ({ ...item, confidence: 0.85 + Math.random() * 0.14 }));
   }
 
-  const json = await res.json() as {
-    choices: Array<{ message: { content: string } }>;
-  };
+  if (anthropicKey) {
+    try { return await analyzeWithClaude(imageUris, anthropicKey, singleItem); }
+    catch (e) { console.warn('[openaiService] Claude Haiku failed, trying GPT-4o:', e); }
+  }
 
-  const text = json.choices[0]?.message?.content ?? '[]';
-  return parseGptResponse(text);
+  if (openaiKey) {
+    try { return await analyzeWithGPT4o(imageUris, openaiKey, singleItem); }
+    catch (e) { console.warn('[openaiService] GPT-4o failed, using mock:', e); }
+  }
+
+  const count = singleItem ? 1 : Math.floor(Math.random() * 3) + 3;
+  return MOCK_ITEMS.slice(0, count).map((item) => ({ ...item, confidence: 0.85 + Math.random() * 0.14 }));
 }

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Stack, router, usePathname } from 'expo-router';
 import { useAuthStore } from '@/store/authStore';
+import { useUsageStore } from '@/store/usageStore';
 import { SidebarProvider, useSidebar } from '@/context/SidebarContext';
 import { Sidebar } from '@/components/navigation/Sidebar';
 import { colors } from '@/theme/colors';
@@ -10,6 +11,12 @@ function AppLayoutInner() {
   const { user, isDemo, isLoading } = useAuthStore();
   const { isOpen, close } = useSidebar();
   const pathname = usePathname();
+  const loadUsage       = useUsageStore((s) => s.loadUsage);
+  const resetIfNewMonth = useUsageStore((s) => s.resetIfNewMonth);
+
+  useEffect(() => {
+    loadUsage().then(() => resetIfNewMonth());
+  }, [loadUsage, resetIfNewMonth]);
 
   useEffect(() => {
     if (!isLoading && !user && !isDemo) {

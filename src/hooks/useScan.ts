@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react';
+import { Alert } from 'react-native';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useUsageStore, LimitReachedError } from '@/store/usageStore';
 import { analyzeWardrobeImage, DetectedItem } from '@/services/openaiService';
 import { describeClothingItem, generateDalle3Photo } from '@/services/productPhotoService';
 import { removeBackground } from '@/services/removeBgService';
@@ -13,7 +15,6 @@ function makeId() {
   return `scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Build a plain-text description from the OpenAI metadata as DALL-E fallback. */
 function fallbackDescription(d: DetectedItem): string {
   return [
     d.colorNames.slice(0, 2).join(' and '),
@@ -36,10 +37,14 @@ interface UseScanReturn {
 }
 
 export function useScan(): UseScanReturn {
-  const addItem      = useWardrobeStore((s) => s.addItem);
-  const userId       = useAuthStore((s) => s.user?.id ?? 'local');
-  const openaiKey    = useSettingsStore((s) => s.openaiKey);
-  const removeBgKey  = useSettingsStore((s) => s.removeBgKey);
+  const addItem        = useWardrobeStore((s) => s.addItem);
+  const userId         = useAuthStore((s) => s.user?.id ?? 'local');
+  const openaiKey      = useSettingsStore((s) => s.openaiKey);
+  const anthropicKey   = useSettingsStore((s) => s.anthropicKey);
+  const removeBgKey    = useSettingsStore((s) => s.removeBgKey);
+  const replicateKey   = useSettingsStore((s) => s.replicateKey);
+  const checkLimit     = useUsageStore((s) => s.checkLimit);
+  const increment      = useUsageStore((s) => s.increment);
 
   const [scanState,       setScanState]       = useState<ScanState>('INTRO');
   const [scanMode,        setScanMode]        = useState<ScanMode>('wardrobe');
@@ -59,14 +64,17 @@ export function useScan(): UseScanReturn {
     setError(null);
 
     try {
+      // Check scan limit before starting
+      checkLimit('scan');
+
       const isSingle  = scanMode === 'single';
       const sourceUri = uris[uris.length - 1];
 
-      // ── Stap 1: GPT-4o Vision → metadata (categorie, kleuren, stijl) ────────
+      // ── Stap 1: Claude Haiku / GPT-4o Vision → metadata ──────────────────────
       setProcessingLabel('📸 Foto analyseren...');
-      const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle);
+      const detected = await analyzeWardrobeImage(uris, openaiKey, isSingle, anthropicKey);
 
-      // ── Stap 2: GPT-4o Vision → uitgebreide beschrijving voor DALL-E ─────────
+      // ── Stap 2: GPT-4o Vision → uitgebreide beschrijving voor productfoto ─────
       setProcessingLabel('✂️ Kledingstuk herkennen...');
       let description: string;
       try {
@@ -76,18 +84,28 @@ export function useScan(): UseScanReturn {
         description = detected[0] ? fallbackDescription(detected[0]) : 'clothing item';
       }
 
-      // ── Stap 3: DALL-E 3 → productfoto  (fallback: remove.bg → origineel) ──
+      // Increment scan usage after successful analysis
+      await increment('scan');
+
+      // ── Stap 3: Flux Pro / gpt-image-1 → productfoto ─────────────────────────
       setProcessingLabel('🎨 Productfoto genereren...');
       let processedUri: string | undefined;
       try {
-        processedUri = await generateDalle3Photo(description, openaiKey);
+        // Check HD photo limit before generating
+        checkLimit('hdPhoto');
+        processedUri = await generateDalle3Photo(description, openaiKey, replicateKey);
+        await increment('hdPhoto');
       } catch (dalleErr) {
-        console.warn('[useScan] DALL-E 3 failed, trying remove.bg:', dalleErr);
+        if (dalleErr instanceof LimitReachedError) {
+          // Limit reached — skip HD photo silently, use background removal instead
+          console.warn('[useScan] HD photo limit reached, trying remove.bg');
+        } else {
+          console.warn('[useScan] generateDalle3Photo failed, trying remove.bg:', dalleErr);
+        }
         try {
           processedUri = await removeBackground(sourceUri, removeBgKey);
         } catch (bgErr) {
           console.warn('[useScan] remove.bg also failed, using original photo:', bgErr);
-          // processedUri stays undefined — wardrobe falls back to imageUrl
         }
       }
 
@@ -100,7 +118,7 @@ export function useScan(): UseScanReturn {
           userId,
           imageUrl:          sourceUri,
           processedPhotoUrl: processedUri,
-          description,                      // GPT-4o description — used for try-on accuracy
+          description,
           category:          d.category,
           subcategory:       d.subcategory,
           brand:             d.brand ?? undefined,
@@ -119,12 +137,17 @@ export function useScan(): UseScanReturn {
       setAddedCount(detected.length);
       setScanState('COMPLETE');
     } catch (err) {
+      if (err instanceof LimitReachedError) {
+        Alert.alert('Limiet bereikt', err.message, [{ text: 'Upgraden', style: 'default' }, { text: 'Sluiten', style: 'cancel' }]);
+        setScanState('INTRO');
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Analyse mislukt. Probeer opnieuw.';
       console.error('[useScan] finishCapture error:', err);
       setError(msg);
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, removeBgKey, addItem, userId]);
+  }, [scanMode, openaiKey, anthropicKey, removeBgKey, replicateKey, addItem, userId, checkLimit, increment]);
 
   const reset = useCallback(() => {
     setScanState('INTRO');

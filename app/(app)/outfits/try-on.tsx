@@ -22,6 +22,7 @@ import { spacing } from '@/theme/spacing';
 import { useWardrobeStore, ClothingItem } from '@/store/wardrobeStore';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useUsageStore, LimitReachedError } from '@/store/usageStore';
 import { generateFashnTryOn } from '@/services/fashnService';
 import { generateTryOn } from '@/services/tryOnService';
 
@@ -433,10 +434,13 @@ const rowS = StyleSheet.create({
 export default function TryOnScreen() {
   const insets      = useSafeAreaInsets();
   const router      = useRouter();
-  const items         = useWardrobeStore((s) => s.items);
-  const modelPhotoUrl = useAuthStore((s) => s.modelPhotoUrl);   // always the processed version
-  const openaiKey     = useSettingsStore((s) => s.openaiKey);
-  const fashnKey      = useSettingsStore((s) => s.fashnKey);
+  const items          = useWardrobeStore((s) => s.items);
+  const modelPhotoUrl  = useAuthStore((s) => s.modelPhotoUrl);
+  const openaiKey      = useSettingsStore((s) => s.openaiKey);
+  const fashnKey       = useSettingsStore((s) => s.fashnKey);
+  const replicateKey   = useSettingsStore((s) => s.replicateKey);
+  const checkLimit     = useUsageStore((s) => s.checkLimit);
+  const increment      = useUsageStore((s) => s.increment);
 
   const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
   const [isTryingOn,  setIsTryingOn]  = useState(false);
@@ -503,26 +507,36 @@ export default function TryOnScreen() {
 
   const handleTryOn = useCallback(async () => {
     if (!modelPhotoUrl || selectedCount === 0) return;
+
+    try {
+      checkLimit('tryOn');
+    } catch (e) {
+      if (e instanceof LimitReachedError) {
+        Alert.alert('Limiet bereikt', e.message, [{ text: 'Upgraden', style: 'default' }, { text: 'Sluiten', style: 'cancel' }]);
+        return;
+      }
+    }
+
     setIsTryingOn(true);
     try {
       let result: string;
-      if (fashnKey) {
-        // Fashn.ai: image-based virtual try-on (preferred)
+      if (fashnKey || replicateKey) {
         const garments = Object.values(selected)
           .filter((item) => item.processedPhotoUrl ?? item.imageUrl)
           .map((item) => ({
-            imageUri: item.processedPhotoUrl ?? item.imageUrl,
-            category: item.category,
+            imageUri:    item.processedPhotoUrl ?? item.imageUrl,
+            category:    item.category,
+            description: item.description,
           }));
-        result = await generateFashnTryOn(modelPhotoUrl, garments, fashnKey);
+        result = await generateFashnTryOn(modelPhotoUrl, garments, fashnKey, replicateKey);
       } else if (openaiKey) {
-        // Fallback: gpt-image-1 with text description
         const description = buildOutfitDescription();
         result = await generateTryOn(modelPhotoUrl, description, openaiKey);
       } else {
-        throw new Error('Geen API key beschikbaar. Stel een Fashn.ai of OpenAI key in bij Instellingen.');
+        throw new Error('Geen API key beschikbaar. Stel een Replicate, Fashn.ai of OpenAI key in bij Instellingen.');
       }
       setTryOnResult(result);
+      await increment('tryOn');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Try-on mislukt';
       console.error('[TryOnScreen] handleTryOn error:', e);
@@ -530,7 +544,7 @@ export default function TryOnScreen() {
     } finally {
       setIsTryingOn(false);
     }
-  }, [modelPhotoUrl, fashnKey, openaiKey, selectedCount, selected, buildOutfitDescription]);
+  }, [modelPhotoUrl, fashnKey, replicateKey, openaiKey, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;

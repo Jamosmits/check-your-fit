@@ -236,6 +236,17 @@ export function Sidebar({ isOpen, onClose, activeRoute }: SidebarProps) {
             {/* Bottom actions */}
             <View style={styles.bottomActions}>
               <TouchableOpacity
+                style={styles.upgradeRow}
+                onPress={() => {
+                  close();
+                  setTimeout(() => router.push('/(app)/upgrade'), 300);
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="flash" size={20} color={colors.white} />
+                <Text style={styles.upgradeLabel}>Upgrade plan</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 style={styles.settingsRow}
                 onPress={() => {
                   close();
@@ -378,6 +389,22 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
     paddingBottom: spacing.base,
+  },
+  upgradeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.sm,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.md,
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+  },
+  upgradeLabel: {
+    fontSize: fontSizes.base,
+    fontWeight: fontWeights.semibold,
+    color: colors.white,
   },
   settingsRow: {
     flexDirection: 'row',

@@ -24,6 +24,7 @@ import { useAuthStore, BodyMeasurements } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useWardrobeStore } from '@/store/wardrobeStore';
 import { useWardrobeItems } from '@/hooks/useWardrobe';
+import { useUsageStore, PLANS } from '@/store/usageStore';
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
@@ -340,6 +341,91 @@ const measS = StyleSheet.create({
   saveBtnText: { color: colors.white, fontSize: fontSizes.base, fontWeight: fontWeights.semibold },
 });
 
+function UsageBar({ used, total, color }: { used: number; total: number; color: string }) {
+  const pct = total > 0 ? Math.min(used / total, 1) : 0;
+  return (
+    <View style={usageS.barTrack}>
+      <View style={[usageS.barFill, { width: `${pct * 100}%` as `${number}%`, backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function UsageSection() {
+  const router       = useRouter();
+  const currentPlan  = useUsageStore((s) => s.currentPlan);
+  const scansUsed    = useUsageStore((s) => s.scansUsed);
+  const hdPhotosUsed = useUsageStore((s) => s.hdPhotosUsed);
+  const tryOnsUsed   = useUsageStore((s) => s.tryOnsUsed);
+
+  const plan   = PLANS[currentPlan];
+  const isFree = currentPlan === 'free';
+
+  const rows = [
+    { label: 'Scans',       used: scansUsed,    total: plan.scans,    color: colors.status.info },
+    { label: "HD foto's",   used: hdPhotosUsed, total: plan.hdPhotos, color: colors.status.success },
+    { label: 'Try-ons',     used: tryOnsUsed,   total: plan.tryOns,   color: colors.status.warning },
+  ];
+
+  return (
+    <Card style={usageS.card}>
+      <View style={usageS.header}>
+        <View style={usageS.planRow}>
+          <Text style={usageS.title}>Gebruik deze maand</Text>
+          <View style={usageS.badge}>
+            <Text style={usageS.badgeText}>{plan.label}</Text>
+          </View>
+        </View>
+        {isFree && (
+          <TouchableOpacity
+            style={usageS.upgradeBtn}
+            onPress={() => router.push('/(app)/upgrade')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="flash" size={14} color={colors.white} />
+            <Text style={usageS.upgradeBtnText}>Upgraden</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {rows.map(({ label, used, total, color }) => (
+        <View key={label} style={usageS.row}>
+          <View style={usageS.rowHeader}>
+            <Text style={usageS.rowLabel}>{label}</Text>
+            <Text style={usageS.rowCount}>{used} van {total}</Text>
+          </View>
+          <UsageBar used={used} total={total} color={color} />
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+const usageS = StyleSheet.create({
+  card:    { gap: spacing.md },
+  header:  { gap: spacing.xs },
+  planRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  title:   { fontSize: fontSizes.base, fontWeight: fontWeights.semibold, color: colors.textPrimary, flex: 1 },
+  badge: {
+    backgroundColor: colors.surfaceAlt, borderRadius: 8,
+    paddingHorizontal: spacing.sm, paddingVertical: 3,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  badgeText: { fontSize: fontSizes.xs, fontWeight: fontWeights.semibold, color: colors.textSecondary },
+  upgradeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.accent, borderRadius: 10,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2,
+    alignSelf: 'flex-start',
+  },
+  upgradeBtnText: { fontSize: fontSizes.sm, fontWeight: fontWeights.semibold, color: colors.white },
+  row:       { gap: spacing.xs + 2 },
+  rowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowLabel:  { fontSize: fontSizes.sm, color: colors.textPrimary, fontWeight: fontWeights.medium },
+  rowCount:  { fontSize: fontSizes.xs, color: colors.textSecondary },
+  barTrack:  { height: 6, borderRadius: 3, backgroundColor: colors.surfaceAlt, overflow: 'hidden' },
+  barFill:   { height: '100%', borderRadius: 3 },
+});
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -496,6 +582,9 @@ export default function ProfileScreen() {
       <BodyMeasurementsSection />
 
       <BodyPhotoSection />
+
+      {/* Usage & subscription */}
+      <UsageSection />
 
       {/* Settings shortcut */}
       <Card style={styles.settingsCard}>
