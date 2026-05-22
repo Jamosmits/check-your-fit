@@ -30,6 +30,7 @@ import { Card } from '@/components/ui/Card';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ClothingCard } from '@/components/wardrobe/ClothingCard';
 import { processBodyPhoto, generateModelPoses } from '@/services/modelPhotoService';
+import { generateFaceToModel } from '@/services/fashnService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
@@ -66,6 +67,7 @@ function BodyPhotoSection() {
   const setModelPhotoUrl  = useAuthStore((s) => s.setModelPhotoUrl);
   const setModelPoses     = useAuthStore((s) => s.setModelPoses);
   const openaiKey         = useSettingsStore((s) => s.openaiKey);
+  const fashnKey          = useSettingsStore((s) => s.fashnKey);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingLabel, setProcessingLabel] = useState('');
@@ -94,28 +96,45 @@ function BodyPhotoSection() {
     if (!result.canceled && result.assets[0]) {
       const uri = result.assets[0].uri;
       await setBodyPhoto(uri);
-      if (!openaiKey) {
+      if (!fashnKey && !openaiKey) {
         Alert.alert(
-          'OpenAI key ontbreekt',
-          'Stel je OpenAI key in bij Instellingen om je modelfoto te verwerken.',
+          'API key ontbreekt',
+          'Stel je Fashn.ai of OpenAI key in bij Instellingen om je modelfoto te verwerken.',
         );
         return;
       }
       try {
         setIsProcessing(true);
-        setProcessingLabel('Model verwerken...');
-        const frontUri = await processBodyPhoto(uri, openaiKey, bodyMeasurements ?? undefined);
+        setProcessingLabel('Model genereren...');
+        let frontUri: string;
+
+        if (fashnKey) {
+          frontUri = await generateFaceToModel(
+            uri,
+            {
+              height: bodyMeasurements?.heightCm,
+              weight: bodyMeasurements?.weightKg,
+              size:   bodyMeasurements?.clothingSize ?? undefined,
+              gender: bodyMeasurements?.gender ?? undefined,
+            },
+            fashnKey,
+          );
+        } else {
+          frontUri = await processBodyPhoto(uri, openaiKey, bodyMeasurements ?? undefined);
+        }
+
         await setModelPhotoUrl(frontUri);
         await setModelPoses({ front: frontUri, side: null, back: null });
         setActiveTab('front');
 
-        setProcessingLabel('Poses genereren...');
-        const { side, back } = await generateModelPoses(frontUri, openaiKey);
-        await setModelPoses({ front: frontUri, side, back });
+        if (openaiKey) {
+          setProcessingLabel('Poses genereren...');
+          const { side, back } = await generateModelPoses(frontUri, openaiKey);
+          await setModelPoses({ front: frontUri, side, back });
+        }
       } catch (e) {
         console.warn('[BodyPhotoSection] model processing failed:', e);
-        Alert.alert('Verwerking mislukt', 'Probeer opnieuw. Controleer je OpenAI key en internetverbinding.');
-        // Clear any partial state — don't show the raw original
+        Alert.alert('Verwerking mislukt', 'Probeer opnieuw. Controleer je API key en internetverbinding.');
         await setModelPhotoUrl(null);
         await setModelPoses(null);
       } finally {
@@ -123,7 +142,7 @@ function BodyPhotoSection() {
         setProcessingLabel('');
       }
     }
-  }, [openaiKey, setBodyPhoto, setModelPhotoUrl, setModelPoses]);
+  }, [fashnKey, openaiKey, bodyMeasurements, setBodyPhoto, setModelPhotoUrl, setModelPoses]);
 
   const handlePress = useCallback(() => {
     Alert.alert(
@@ -209,6 +228,11 @@ const GENDERS: { value: BodyMeasurements['gender']; label: string }[] = [
 function BodyMeasurementsSection() {
   const measurements        = useAuthStore((s) => s.bodyMeasurements);
   const setBodyMeasurements = useAuthStore((s) => s.setBodyMeasurements);
+  const bodyPhotoUri        = useAuthStore((s) => s.bodyPhotoUri);
+  const setModelPhotoUrl    = useAuthStore((s) => s.setModelPhotoUrl);
+  const setModelPoses       = useAuthStore((s) => s.setModelPoses);
+  const fashnKey            = useSettingsStore((s) => s.fashnKey);
+  const openaiKey           = useSettingsStore((s) => s.openaiKey);
 
   const [draft, setDraft] = useState<BodyMeasurements>(measurements ?? {});
   const [saved, setSaved]  = useState(false);
@@ -217,7 +241,34 @@ function BodyMeasurementsSection() {
     await setBodyMeasurements(draft);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [draft, setBodyMeasurements]);
+
+    // Regenerate model photo with updated measurements in background
+    if (bodyPhotoUri && (fashnKey || openaiKey)) {
+      (async () => {
+        try {
+          let frontUri: string;
+          if (fashnKey) {
+            frontUri = await generateFaceToModel(
+              bodyPhotoUri,
+              {
+                height: draft.heightCm,
+                weight: draft.weightKg,
+                size:   draft.clothingSize ?? undefined,
+                gender: draft.gender ?? undefined,
+              },
+              fashnKey,
+            );
+          } else {
+            frontUri = await processBodyPhoto(bodyPhotoUri, openaiKey, draft);
+          }
+          await setModelPhotoUrl(frontUri);
+          await setModelPoses({ front: frontUri, side: null, back: null });
+        } catch (e) {
+          console.warn('[BodyMeasurementsSection] model regeneration failed:', e);
+        }
+      })();
+    }
+  }, [draft, setBodyMeasurements, bodyPhotoUri, fashnKey, openaiKey, setModelPhotoUrl, setModelPoses]);
 
   return (
     <Card style={measS.card}>

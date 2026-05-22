@@ -188,6 +188,52 @@ async function applyGarmentFashn(
   return downloadToFile(outputUrl, 'fashn');
 }
 
+// ─── Face-to-model ────────────────────────────────────────────────────────────
+
+export async function generateFaceToModel(
+  faceImageUri: string,
+  measurements: { height?: number; weight?: number; size?: string; gender?: string },
+  fashnKey: string,
+): Promise<string> {
+  const faceB64 = await toBase64(faceImageUri);
+
+  const inputs: Record<string, unknown> = {
+    face_image: `data:image/jpeg;base64,${faceB64}`,
+  };
+  if (measurements.height) inputs.height = measurements.height;
+  if (measurements.weight) inputs.weight = measurements.weight;
+  if (measurements.size)   inputs.size   = measurements.size;
+  if (measurements.gender) inputs.gender = measurements.gender;
+
+  const res = await fetch(FASHN_RUN, {
+    method:  'POST',
+    headers: { Authorization: `Bearer ${fashnKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model_name: 'face-to-model', inputs }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => '<unreadable>');
+    throw new Error(`Fashn.ai face-to-model ${res.status}: ${err.slice(0, 300)}`);
+  }
+
+  const data = (await res.json()) as { id?: string; output?: string[] | string; status?: string; error?: string };
+
+  if (data.status === 'completed') {
+    const out = data.output;
+    const url = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : null;
+    if (url) return downloadToFile(url, 'face2model');
+  }
+
+  if (data.status === 'failed' || data.status === 'canceled') {
+    throw new Error(`Fashn.ai face-to-model failed: ${data.error ?? ''}`);
+  }
+
+  if (!data.id) throw new Error('No prediction ID from Fashn.ai face-to-model');
+
+  const outputUrl = await pollFashn(data.id, fashnKey);
+  return downloadToFile(outputUrl, 'face2model');
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**

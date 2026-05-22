@@ -1,6 +1,21 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Wrap AsyncStorage so zustand/persist never crashes on a cold start
+const safeStorage: StateStorage = {
+  getItem: async (name) => {
+    try { return await AsyncStorage.getItem(name); } catch { return null; }
+  },
+  setItem: async (name, value) => {
+    try { await AsyncStorage.setItem(name, value); } catch (e) {
+      console.warn('[wardrobeStore] AsyncStorage setItem failed:', e);
+    }
+  },
+  removeItem: async (name) => {
+    try { await AsyncStorage.removeItem(name); } catch {}
+  },
+};
 
 export interface ClothingItem {
   id: string;
@@ -69,7 +84,7 @@ export const useWardrobeStore = create<WardrobeState>()(
     }),
     {
       name: 'wardrobe-store-v1',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => safeStorage),
       // Only persist items — filters are session-only
       partialize: (state) => ({ items: state.items }),
     },
