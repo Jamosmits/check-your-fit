@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -439,8 +439,15 @@ export default function TryOnScreen() {
   const openaiKey      = useSettingsStore((s) => s.openaiKey);
   const fashnKey       = useSettingsStore((s) => s.fashnKey);
   const replicateKey   = useSettingsStore((s) => s.replicateKey);
+  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const loadKeys       = useSettingsStore((s) => s.loadKeys);
   const checkLimit     = useUsageStore((s) => s.checkLimit);
   const increment      = useUsageStore((s) => s.increment);
+
+  // Ensure keys are hydrated from SecureStore before this screen is used
+  useEffect(() => {
+    if (!isSettingsLoaded) loadKeys();
+  }, [isSettingsLoaded, loadKeys]);
 
   const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
   const [isTryingOn,  setIsTryingOn]  = useState(false);
@@ -517,6 +524,19 @@ export default function TryOnScreen() {
       }
     }
 
+    // Debug: log key presence so we can confirm hydration in the console
+    console.log('[tryOn] keys —',
+      `replicate: ${replicateKey ? replicateKey.slice(0, 4) + '…' : '(empty)'}`,
+      `fashn: ${fashnKey ? fashnKey.slice(0, 4) + '…' : '(empty)'}`,
+      `openai: ${openaiKey ? openaiKey.slice(0, 4) + '…' : '(empty)'}`,
+      `settingsLoaded: ${isSettingsLoaded}`,
+    );
+
+    if (!isSettingsLoaded) {
+      Alert.alert('Even geduld', 'Instellingen worden nog geladen. Probeer opnieuw.');
+      return;
+    }
+
     setIsTryingOn(true);
     try {
       let result: string;
@@ -544,7 +564,7 @@ export default function TryOnScreen() {
     } finally {
       setIsTryingOn(false);
     }
-  }, [modelPhotoUrl, fashnKey, replicateKey, openaiKey, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
+  }, [modelPhotoUrl, fashnKey, replicateKey, openaiKey, isSettingsLoaded, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;
