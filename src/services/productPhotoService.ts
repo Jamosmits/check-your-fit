@@ -133,6 +133,8 @@ export async function generateDalle3Photo(
 ): Promise<string> {
   const prompt = category === 'shoes' ? SHOE_EDIT_PROMPT : EDIT_PROMPT;
 
+  console.log('[gptImageEdit] openaiKey:', openaiKey ? openaiKey.slice(0, 8) + '…' : '(empty — check Settings)');
+
   const formData = new FormData();
   formData.append('model', 'gpt-image-1');
   formData.append('image', { uri: imageUri, type: 'image/jpeg', name: 'photo.jpg' } as unknown as Blob);

@@ -133,6 +133,9 @@ export default function TripIndexScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('trip.title')}</Text>
       </View>
 
@@ -204,11 +207,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     paddingHorizontal: spacing.screen,
     paddingTop: spacing.base,
     paddingBottom: spacing.sm,
   },
   headerTitle: {
+    flex: 1,
     fontFamily: typography.fonts.serif.bold,
     fontSize: typography.fontSizes.xl,
     color: colors.textPrimary,

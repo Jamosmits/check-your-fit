@@ -524,23 +524,25 @@ export default function TryOnScreen() {
       }
     }
 
-    // Debug: log key presence so we can confirm hydration in the console
+    // Ensure keys are loaded; if not, trigger a fresh load and read directly from store
+    if (!isSettingsLoaded) await loadKeys();
+    const {
+      replicateKey: latestReplicate,
+      fashnKey:     latestFashn,
+      openaiKey:    latestOpenai,
+    } = useSettingsStore.getState();
+
     console.log('[tryOn] keys —',
-      `replicate: ${replicateKey ? replicateKey.slice(0, 4) + '…' : '(empty)'}`,
-      `fashn: ${fashnKey ? fashnKey.slice(0, 4) + '…' : '(empty)'}`,
-      `openai: ${openaiKey ? openaiKey.slice(0, 4) + '…' : '(empty)'}`,
+      `replicate: ${latestReplicate ? latestReplicate.slice(0, 8) + '…' : '(empty)'}`,
+      `fashn: ${latestFashn ? latestFashn.slice(0, 8) + '…' : '(empty)'}`,
+      `openai: ${latestOpenai ? latestOpenai.slice(0, 8) + '…' : '(empty)'}`,
       `settingsLoaded: ${isSettingsLoaded}`,
     );
-
-    if (!isSettingsLoaded) {
-      Alert.alert('Even geduld', 'Instellingen worden nog geladen. Probeer opnieuw.');
-      return;
-    }
 
     setIsTryingOn(true);
     try {
       let result: string;
-      if (fashnKey || replicateKey) {
+      if (latestFashn || latestReplicate) {
         const garments = Object.values(selected)
           .filter((item) => item.processedPhotoUrl ?? item.imageUrl)
           .map((item) => ({
@@ -548,10 +550,10 @@ export default function TryOnScreen() {
             category:    item.category,
             description: item.description,
           }));
-        result = await generateFashnTryOn(modelPhotoUrl, garments, fashnKey, replicateKey);
-      } else if (openaiKey) {
+        result = await generateFashnTryOn(modelPhotoUrl, garments, latestFashn, latestReplicate);
+      } else if (latestOpenai) {
         const description = buildOutfitDescription();
-        result = await generateTryOn(modelPhotoUrl, description, openaiKey);
+        result = await generateTryOn(modelPhotoUrl, description, latestOpenai);
       } else {
         throw new Error('Geen API key beschikbaar. Stel een Replicate, Fashn.ai of OpenAI key in bij Instellingen.');
       }

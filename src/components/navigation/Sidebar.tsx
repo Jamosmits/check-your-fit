@@ -69,13 +69,10 @@ export function Sidebar({ isOpen, onClose, activeRoute }: SidebarProps) {
   }, [translateX, overlayOpacity, onClose]);
 
   useEffect(() => {
-    if (isOpen) {
-      open();
-    } else {
-      translateX.value = withSpring(-SIDEBAR_WIDTH, { damping: 20, stiffness: 180 });
-      overlayOpacity.value = withTiming(0, { duration: 200 });
-    }
-  }, [isOpen, open, translateX, overlayOpacity]);
+    if (isOpen) open();
+    // Closing is driven by close() which calls onClose() after the animation
+    // completes — re-animating here would interrupt the spring and cause jitter
+  }, [isOpen, open]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
@@ -104,7 +101,7 @@ export function Sidebar({ isOpen, onClose, activeRoute }: SidebarProps) {
 
   const navItems: NavItem[] = [
     {
-      label: t('home.quickActions.scan').replace('Scan', 'Home'),
+      label: 'Home',
       icon: 'home-outline',
       iconActive: 'home',
       route: '/(app)/home',

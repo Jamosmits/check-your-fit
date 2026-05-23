@@ -129,6 +129,9 @@ export default function WardrobeIndexScreen() {
 
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('wardrobe.title')}</Text>
         <TouchableOpacity
           onPress={() => router.push('/(app)/wardrobe/scan')}

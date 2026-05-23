@@ -481,8 +481,22 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { t } = useTranslation();
-  const user = useAuthStore((s) => s.user);
+  const user     = useAuthStore((s) => s.user);
+  const token    = useAuthStore((s) => s.token);
+  const setAuth  = useAuthStore((s) => s.setAuth);
   const { data: items = [], isLoading } = useWardrobeItems();
+
+  const handleAvatarPress = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (!result.canceled && result.assets[0] && user && token) {
+      await setAuth({ ...user, avatarUrl: result.assets[0].uri }, token);
+    }
+  }, [user, token, setAuth]);
 
   const stats = useMemo(() => {
     if (!items.length) return null;
@@ -521,11 +535,13 @@ export default function ProfileScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Avatar
-            imageUrl={user?.avatarUrl}
-            name={user?.name}
-            size={64}
-          />
+          <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.8}>
+            <Avatar
+              imageUrl={user?.avatarUrl}
+              name={user?.name}
+              size={64}
+            />
+          </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={styles.userName}>{user?.name}</Text>
             <Text style={styles.userEmail}>{user?.email}</Text>

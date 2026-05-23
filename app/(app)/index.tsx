@@ -167,15 +167,14 @@ function ModelHeroSection() {
           </View>
         </TouchableOpacity>
 
-        {modelPoses && (
+        {modelPoses && HOME_POSE_LABELS.filter(({ key }) => modelPoses[key]).length > 1 && (
           <View style={mh.poseRow}>
-            {HOME_POSE_LABELS.map(({ key, label }) => (
+            {HOME_POSE_LABELS.filter(({ key }) => modelPoses[key]).map(({ key, label }) => (
               <TouchableOpacity
                 key={key}
                 style={[mh.poseTab, activeTab === key && mh.poseTabActive]}
                 onPress={() => setActiveTab(key)}
                 activeOpacity={0.8}
-                disabled={!modelPoses[key]}
               >
                 <Text style={[mh.poseTabText, activeTab === key && mh.poseTabTextActive]}>
                   {label}
