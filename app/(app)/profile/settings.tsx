@@ -20,6 +20,7 @@ import { spacing } from '@/theme/spacing';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useUsageStore } from '@/store/usageStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -172,6 +173,11 @@ export default function SettingsScreen() {
     setOpenaiKey, setRemoveBgKey, setReplicateKey, setFashnKey, setAnthropicKey,
     setSupabaseUrl, setSupabaseAnonKey,
   } = useSettingsStore();
+
+  const resetUsage   = useUsageStore((s) => s.resetUsage);
+  const scansUsed    = useUsageStore((s) => s.scansUsed);
+  const hdPhotosUsed = useUsageStore((s) => s.hdPhotosUsed);
+  const tryOnsUsed   = useUsageStore((s) => s.tryOnsUsed);
 
   const [outfitReminders, setOutfitReminders] = useState(false);
   const [marketingNotifs, setMarketingNotifs] = useState(false);
@@ -387,6 +393,20 @@ export default function SettingsScreen() {
         variant="secondary"
         onPress={handleLogout}
       />
+
+      {/* Developer */}
+      <SectionHeader label="Developer" />
+      <Card style={styles.card}>
+        <SettingsRow
+          icon="refresh-cw"
+          label="Reset gebruik"
+          value={`${scansUsed} scans · ${hdPhotosUsed} HD · ${tryOnsUsed} try-ons`}
+          onPress={async () => {
+            await resetUsage();
+            Alert.alert('Gebruik gereset', 'Alle tellers staan weer op 0.');
+          }}
+        />
+      </Card>
 
       {/* Account verwijderen */}
       <SectionHeader label="Gevaarlijke zone" />

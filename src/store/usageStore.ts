@@ -13,7 +13,7 @@ export interface PlanInfo {
 }
 
 export const PLANS: Record<PlanType, PlanInfo> = {
-  free:    { label: 'Gratis',  price: 0,     scans: 25,  hdPhotos: 10,  tryOns: 3   },
+  free:    { label: 'Gratis',  price: 0,     scans: 999, hdPhotos: 999, tryOns: 999  },
   starter: { label: 'Starter', price: 6.99,  scans: 100, hdPhotos: 50,  tryOns: 20  },
   premium: { label: 'Premium', price: 12.99, scans: 250, hdPhotos: 150, tryOns: 60  },
   pro:     { label: 'Pro',     price: 24.99, scans: 500, hdPhotos: 400, tryOns: 150 },
@@ -36,11 +36,12 @@ interface UsageState {
   tryOnsUsed:     number;
   lastResetDate:  string;   // ISO date string YYYY-MM-DD
 
-  setPlan:        (plan: PlanType) => Promise<void>;
-  checkLimit:     (type: UsageType) => void;  // throws LimitReachedError if over
-  increment:      (type: UsageType) => Promise<void>;
+  setPlan:         (plan: PlanType) => Promise<void>;
+  checkLimit:      (type: UsageType) => void;  // throws LimitReachedError if over
+  increment:       (type: UsageType) => Promise<void>;
+  resetUsage:      () => Promise<void>;
   resetIfNewMonth: () => Promise<void>;
-  loadUsage:      () => Promise<void>;
+  loadUsage:       () => Promise<void>;
 }
 
 const USAGE_KEY = 'usage_state_v1';
@@ -89,6 +90,12 @@ export const useUsageStore = create<UsageState>((set, get) => ({
       hdPhotosUsed:  s.hdPhotosUsed  + (type === 'hdPhoto' ? 1 : 0),
       tryOnsUsed:    s.tryOnsUsed    + (type === 'tryOn'   ? 1 : 0),
     };
+    set(next);
+    await persist(next);
+  },
+
+  resetUsage: async () => {
+    const next = { ...get(), scansUsed: 0, hdPhotosUsed: 0, tryOnsUsed: 0, lastResetDate: todayStr() };
     set(next);
     await persist(next);
   },

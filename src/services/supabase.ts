@@ -11,7 +11,14 @@ export function getSupabaseClient(): SupabaseClient | null {
   const { supabaseUrl, supabaseAnonKey } = useSettingsStore.getState();
   if (!supabaseUrl || !supabaseAnonKey) return null;
 
-  // Re-use existing client if credentials haven't changed
+  if (!supabaseUrl.match(/^https:\/\/[a-z0-9-]+\.supabase\.co$/i)) {
+    console.error(
+      '[Supabase] URL incorrect — gebruik format: https://xxxx.supabase.co',
+      '(ontvangen:', supabaseUrl, ')',
+    );
+    return null;
+  }
+
   if (_client) return _client;
 
   _client = createClient(supabaseUrl, supabaseAnonKey);
