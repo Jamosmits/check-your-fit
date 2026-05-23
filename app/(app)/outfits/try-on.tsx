@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useUsageStore, LimitReachedError } from '@/store/usageStore';
 import { generateFashnTryOn } from '@/services/fashnService';
 import { generateTryOn } from '@/services/tryOnService';
+import { useSettings } from '@/hooks/useSettings';
 
 const { height: SH } = Dimensions.get('window');
 const THUMB = 76;
@@ -436,18 +437,12 @@ export default function TryOnScreen() {
   const router      = useRouter();
   const items          = useWardrobeStore((s) => s.items);
   const modelPhotoUrl  = useAuthStore((s) => s.modelPhotoUrl);
-  const openaiKey      = useSettingsStore((s) => s.openaiKey);
-  const fashnKey       = useSettingsStore((s) => s.fashnKey);
-  const replicateKey   = useSettingsStore((s) => s.replicateKey);
-  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
-  const loadKeys       = useSettingsStore((s) => s.loadKeys);
+  const { isLoaded: isSettingsLoaded, openaiKey, fashnKey, replicateKey } = useSettings();
   const checkLimit     = useUsageStore((s) => s.checkLimit);
   const increment      = useUsageStore((s) => s.increment);
 
-  // Ensure keys are hydrated from SecureStore before this screen is used
-  useEffect(() => {
-    if (!isSettingsLoaded) loadKeys();
-  }, [isSettingsLoaded, loadKeys]);
+  // True once keys are loaded and no try-on API key is configured
+  const noTryOnKey = isSettingsLoaded && !replicateKey && !fashnKey && !openaiKey;
 
   const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
   const [isTryingOn,  setIsTryingOn]  = useState(false);
@@ -524,8 +519,7 @@ export default function TryOnScreen() {
       }
     }
 
-    // Ensure keys are loaded; if not, trigger a fresh load and read directly from store
-    if (!isSettingsLoaded) await loadKeys();
+    // Always read fresh values from the store to avoid stale closure captures
     const {
       replicateKey: latestReplicate,
       fashnKey:     latestFashn,
@@ -566,7 +560,7 @@ export default function TryOnScreen() {
     } finally {
       setIsTryingOn(false);
     }
-  }, [modelPhotoUrl, fashnKey, replicateKey, openaiKey, isSettingsLoaded, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
+  }, [modelPhotoUrl, isSettingsLoaded, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;
@@ -647,21 +641,28 @@ export default function TryOnScreen() {
             )}
 
             {modelPhotoUrl && selectedCount > 0 && (
-              <TouchableOpacity
-                style={s.tryOnBtn}
-                onPress={handleTryOn}
-                activeOpacity={0.85}
-                disabled={isTryingOn}
-              >
-                {isTryingOn ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <Ionicons name="person" size={15} color={colors.white} />
+              <View style={s.tryOnBtnWrap}>
+                <TouchableOpacity
+                  style={[s.tryOnBtn, (isTryingOn || !isSettingsLoaded || noTryOnKey) && s.tryOnBtnDisabled]}
+                  onPress={handleTryOn}
+                  activeOpacity={0.85}
+                  disabled={isTryingOn || !isSettingsLoaded || noTryOnKey}
+                >
+                  {isTryingOn || !isSettingsLoaded ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Ionicons name="person" size={15} color={colors.white} />
+                  )}
+                  <Text style={s.tryOnText}>
+                    {isTryingOn ? 'Bezig...' : !isSettingsLoaded ? 'Laden…' : 'Pas op model'}
+                  </Text>
+                </TouchableOpacity>
+                {noTryOnKey && (
+                  <Text style={s.tryOnKeyHint}>
+                    Voeg een Replicate of Fashn.ai key toe in Instellingen
+                  </Text>
                 )}
-                <Text style={s.tryOnText}>
-                  {isTryingOn ? 'Bezig...' : 'Pas op model'}
-                </Text>
-              </TouchableOpacity>
+              </View>
             )}
           </>
         )}
@@ -828,10 +829,14 @@ const s = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.white,
   },
-  tryOnBtn: {
+  tryOnBtnWrap: {
     position: 'absolute',
     bottom: spacing.md,
     right: spacing.md,
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  tryOnBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -848,6 +853,17 @@ const s = StyleSheet.create({
       },
       android: { elevation: 5 },
     }),
+  },
+  tryOnBtnDisabled: { opacity: 0.45 },
+  tryOnKeyHint: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.white,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: 8,
+    maxWidth: 220,
+    textAlign: 'right',
   },
   tryOnText: {
     fontSize: typography.fontSizes.xs,

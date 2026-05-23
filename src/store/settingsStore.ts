@@ -86,7 +86,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       SecureStore.getItemAsync(SUPABASE_URL_KEY).catch(() => ''),
       SecureStore.getItemAsync(SUPABASE_ANON_KEY).catch(() => ''),
     ]);
-    set({
+    const next = {
       openaiKey:       openai    ?? '',
       removeBgKey:     removebg  ?? '',
       replicateKey:    replicate ?? '',
@@ -95,6 +95,18 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       supabaseUrl:     sbUrl     ?? '',
       supabaseAnonKey: sbAnon    ?? '',
       isLoaded: true,
-    });
+    };
+    set(next);
+
+    function keyStatus(v: string | null) { return v ? v.slice(0, 4) + '…' : 'LEEG'; }
+    console.log(
+      '[settings] keys geladen —',
+      `openai: ${keyStatus(next.openaiKey)}`,
+      `replicate: ${keyStatus(next.replicateKey)}`,
+      `fashn: ${keyStatus(next.fashnKey)}`,
+      `anthropic: ${keyStatus(next.anthropicKey)}`,
+      `removebg: ${keyStatus(next.removeBgKey)}`,
+      `supabase: ${next.supabaseUrl ? 'geconfigureerd' : 'LEEG'}`,
+    );
   },
 }));
