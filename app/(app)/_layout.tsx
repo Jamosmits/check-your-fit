@@ -15,13 +15,13 @@ function AppLayoutInner() {
   const pathname = usePathname();
   const loadUsage        = useUsageStore((s) => s.loadUsage);
   const resetIfNewMonth  = useUsageStore((s) => s.resetIfNewMonth);
-  const isSettingsLoaded = useSettingsStore((s) => s.isLoaded);
-  const loadKeys         = useSettingsStore((s) => s.loadKeys);
+  const loadKeys = useSettingsStore((s) => s.loadKeys);
 
-  // Load all API keys from SecureStore on app start
+  // Always reload keys from SecureStore/AsyncStorage on app start
   useEffect(() => {
-    if (!isSettingsLoaded) loadKeys();
-  }, [isSettingsLoaded, loadKeys]);
+    loadKeys();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally run once — loadKeys is stable
 
   useEffect(() => {
     loadUsage().then(() => resetIfNewMonth());

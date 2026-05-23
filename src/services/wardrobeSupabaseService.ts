@@ -1,5 +1,6 @@
 import { ClothingItem } from '@/store/wardrobeStore';
 import { getSupabaseClient } from './supabase';
+import { useSettingsStore } from '@/store/settingsStore';
 
 const TABLE = 'clothing_items';
 
@@ -78,8 +79,13 @@ function fromRow(row: DbRow): ClothingItem {
 
 export const wardrobeSupabaseService = {
   async fetchAll(userId: string): Promise<ClothingItem[]> {
+    const { supabaseUrl, supabaseAnonKey } = useSettingsStore.getState();
+    console.log('[Supabase] fetchAll — URL:', supabaseUrl ? supabaseUrl.slice(0, 30) : 'LEEG',
+      '| key:', supabaseAnonKey ? supabaseAnonKey.slice(0, 8) + '…' : 'LEEG',
+      '| userId:', userId);
+
     const sb = getSupabaseClient();
-    if (!sb) throw new Error('Supabase not configured');
+    if (!sb) throw new Error('Supabase niet geconfigureerd');
 
     const { data, error } = await sb
       .from(TABLE)
@@ -87,16 +93,33 @@ export const wardrobeSupabaseService = {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (error) throw new Error(`Supabase fetch: ${error.message}`);
+    if (error) {
+      console.error('[Supabase] fetchAll FOUT:', error.message);
+      throw new Error(`Supabase fetch: ${error.message}`);
+    }
+    console.log('[Supabase] fetchAll SUCCESS —', (data as DbRow[]).length, 'items');
     return (data as DbRow[]).map(fromRow);
   },
 
   async insert(item: ClothingItem): Promise<void> {
+    const { supabaseUrl, supabaseAnonKey } = useSettingsStore.getState();
+    const label = item.subcategory ?? item.category;
+    console.log('[Supabase] insert poging voor item:', label);
+    console.log('[Supabase] URL:', supabaseUrl ? supabaseUrl.slice(0, 20) : 'LEEG',
+      '| key:', supabaseAnonKey ? supabaseAnonKey.slice(0, 8) + '…' : 'LEEG');
+
     const sb = getSupabaseClient();
-    if (!sb) throw new Error('Supabase not configured');
+    if (!sb) {
+      console.warn('[Supabase] niet geconfigureerd — item bewaard in lokale AsyncStorage als fallback');
+      return;
+    }
 
     const { error } = await sb.from(TABLE).insert(toRow(item));
-    if (error) throw new Error(`Supabase insert: ${error.message}`);
+    if (error) {
+      console.error('[Supabase] insert resultaat: FOUT —', error.message);
+      throw new Error(`Supabase insert: ${error.message}`);
+    }
+    console.log('[Supabase] insert resultaat: SUCCESS —', label);
   },
 
   async update(id: string, updates: Partial<ClothingItem>): Promise<void> {

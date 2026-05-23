@@ -143,8 +143,14 @@ export function useScan(): UseScanReturn {
         };
         addItem(newItem);
         if (supabaseReady) {
+          console.log('[useScan] Supabase insert poging — URL:',
+            supabaseUrl ? supabaseUrl.slice(0, 20) : 'LEEG',
+            '| item:', newItem.subcategory ?? newItem.category);
           wardrobeSupabaseService.insert(newItem)
-            .catch((e) => console.warn('[useScan] Supabase insert failed:', e));
+            .then(() => console.log('[useScan] Supabase insert SUCCESS:', newItem.subcategory ?? newItem.category))
+            .catch((e) => console.error('[useScan] Supabase insert FOUT:', e));
+        } else {
+          console.log('[useScan] Supabase niet geconfigureerd — item opgeslagen in lokale AsyncStorage');
         }
       });
 

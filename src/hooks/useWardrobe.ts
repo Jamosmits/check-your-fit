@@ -63,11 +63,33 @@ export function useSyncWardrobe() {
     synced.current = true;
 
     wardrobeSupabaseService.fetchAll(userId)
-      .then((items) => {
-        console.log(`[wardrobe] Supabase sync: ${items.length} items loaded`);
-        setItems(items);
+      .then((supabaseItems) => {
+        // Merge: Supabase is source of truth but never discard local-only items
+        // (local-only = items that were added while offline or before Supabase was configured)
+        const localItems = useWardrobeStore.getState().items;
+        const supabaseIds = new Set(supabaseItems.map((i) => i.id));
+        const localOnly   = localItems.filter((i) => !supabaseIds.has(i.id));
+
+        if (localOnly.length > 0) {
+          console.log(`[wardrobe] ${localOnly.length} lokale items niet in Supabase — backfill starten`);
+          // Back-fill to Supabase in the background so they're persisted next time
+          for (const item of localOnly) {
+            wardrobeSupabaseService.insert(item)
+              .catch((e) => console.warn('[wardrobe] backfill mislukt voor', item.id, e));
+          }
+        }
+
+        const merged = [...supabaseItems, ...localOnly];
+        console.log(
+          `[wardrobe] sync klaar — Supabase: ${supabaseItems.length},`,
+          `lokaal-only: ${localOnly.length}, totaal: ${merged.length}`,
+        );
+        setItems(merged);
       })
-      .catch((e) => console.warn('[wardrobe] Supabase sync failed, using local cache:', e));
+      .catch((e) => {
+        // On failure keep local AsyncStorage data untouched — do NOT call setItems
+        console.warn('[wardrobe] Supabase sync mislukt, lokale cache behouden:', e);
+      });
   }, [supabaseReady, userId, setItems]);
 }
 
