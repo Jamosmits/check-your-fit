@@ -23,6 +23,8 @@ import { useCreateWardrobeItem } from '@/hooks/useWardrobe';
 import { ClothingItem } from '@/store/wardrobeStore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useSettingsStore } from '@/store/settingsStore';
+import { generateDalle3Photo } from '@/services/productPhotoService';
 
 type Category = ClothingItem['category'];
 
@@ -55,6 +57,28 @@ const DEMO_PRODUCTS: Record<string, Partial<ClothingItem> & { name: string }> = 
   adidas:   { name: 'Adidas product',  category: 'shoes',   subcategory: 'Sneakers',    brand: 'Adidas',        colors: ['#FFFFFF'] },
 };
 
+async function fetchOgImage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    // Handle both attribute orderings of og:image meta tag
+    const m =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ??
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+    if (!m) return null;
+    const imgUrl = m[1].replace(/&amp;/g, '&');
+    return imgUrl.startsWith('http') ? imgUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 function detectShop(url: string): string | null {
   const lower = url.toLowerCase();
   for (const key of Object.keys(DEMO_PRODUCTS)) {
@@ -75,6 +99,7 @@ export default function AddItemScreen() {
   // URL import
   const [urlInput, setUrlInput] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   // Photo + form
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -91,29 +116,52 @@ export default function AddItemScreen() {
   const handleImportUrl = useCallback(async () => {
     if (!urlInput.trim()) return;
     setIsImporting(true);
+    setImportStatus('Pagina ophalen…');
     setError(null);
     try {
-      // Simulate a brief loading delay, then parse locally — no backend needed
-      await new Promise((r) => setTimeout(r, 900));
-      const shop = detectShop(urlInput);
+      const url = urlInput.trim();
+
+      // Fill in demo metadata for known shops
+      const shop = detectShop(url);
       if (shop && DEMO_PRODUCTS[shop]) {
         const p = DEMO_PRODUCTS[shop];
         if (p.category) setCategory(p.category);
         if (p.subcategory) setSubcategory(p.subcategory);
         if (p.brand) setBrand(p.brand);
         if (p.colors) setSelectedColors(p.colors);
-        // Use the URL itself as the image source so the item has something to show
-        setImageUri(urlInput.trim());
+      }
+
+      // Fetch og:image from the webshop page
+      setImportStatus('Productfoto zoeken…');
+      const ogImageUrl = await fetchOgImage(url);
+
+      if (ogImageUrl) {
+        // Show og:image as preview immediately
+        setImageUri(ogImageUrl);
+        setUrlInput('');
+
+        // Try to create a professional product photo via gpt-image-1
+        const { openaiKey } = useSettingsStore.getState();
+        if (openaiKey) {
+          setImportStatus('AI productfoto genereren…');
+          try {
+            const detectedCategory = shop && DEMO_PRODUCTS[shop]?.category;
+            const productUri = await generateDalle3Photo(ogImageUrl, openaiKey, detectedCategory ?? undefined);
+            setImageUri(productUri);
+          } catch (e) {
+            console.warn('[urlImport] gpt-image-1 failed, keeping og:image:', e);
+          }
+        }
+      } else if (shop) {
+        // Known shop but could not fetch og:image — keep URL as fallback image
+        setImageUri(url);
         setUrlInput('');
       } else {
         Alert.alert(
           'Webshop niet herkend',
-          'Ondersteunde webshops: Zalando, ASOS, Zara, H&M, Uniqlo, Mango, Nike, Adidas.\n\nVoeg de URL toe als afbeelding of vul de gegevens handmatig in.',
+          'Geen productfoto gevonden. Voeg handmatig een foto toe of gebruik de URL als afbeelding.',
           [
-            {
-              text: 'Gebruik URL als foto',
-              onPress: () => { setImageUri(urlInput.trim()); setUrlInput(''); },
-            },
+            { text: 'Gebruik URL als foto', onPress: () => { setImageUri(url); setUrlInput(''); } },
             { text: 'Handmatig invullen', style: 'cancel' },
           ],
         );
@@ -122,6 +170,7 @@ export default function AddItemScreen() {
       setError('URL importeren mislukt. Vul de gegevens handmatig in.');
     } finally {
       setIsImporting(false);
+      setImportStatus(null);
     }
   }, [urlInput]);
 
@@ -227,7 +276,10 @@ export default function AddItemScreen() {
                 }
               </TouchableOpacity>
             </View>
-            <Text style={styles.urlHint}>Zalando · ASOS · Zara · H&M · Uniqlo · Nike · meer</Text>
+            {importStatus
+              ? <Text style={styles.urlStatus}>{importStatus}</Text>
+              : <Text style={styles.urlHint}>Zalando · ASOS · Zara · H&M · Uniqlo · Nike · meer</Text>
+            }
           </View>
 
           {/* ── DIVIDER ────────────────────────────────────────────────────── */}
@@ -408,6 +460,7 @@ const styles = StyleSheet.create({
   urlButtonDisabled: { opacity: 0.4 },
   urlButtonText:     { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold, color: colors.white },
   urlHint:           { fontSize: typography.fontSizes.xs, color: colors.textMuted },
+  urlStatus:         { fontSize: typography.fontSizes.xs, color: colors.accent, fontStyle: 'italic' },
 
   orRow:  { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg },
   orLine: { flex: 1, height: 1, backgroundColor: colors.border },
