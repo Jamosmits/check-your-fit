@@ -38,17 +38,10 @@ interface UseScanReturn {
 }
 
 export function useScan(): UseScanReturn {
-  const addItem        = useWardrobeStore((s) => s.addItem);
-  const userId         = useAuthStore((s) => s.user?.id ?? 'local');
-  const openaiKey      = useSettingsStore((s) => s.openaiKey);
-  const anthropicKey   = useSettingsStore((s) => s.anthropicKey);
-  const removeBgKey    = useSettingsStore((s) => s.removeBgKey);
-  const replicateKey   = useSettingsStore((s) => s.replicateKey);
-  const supabaseUrl    = useSettingsStore((s) => s.supabaseUrl);
-  const supabaseAnon   = useSettingsStore((s) => s.supabaseAnonKey);
-  const checkLimit     = useUsageStore((s) => s.checkLimit);
-  const increment      = useUsageStore((s) => s.increment);
-  const supabaseReady  = !!(supabaseUrl && supabaseAnon);
+  const addItem    = useWardrobeStore((s) => s.addItem);
+  const userId     = useAuthStore((s) => s.user?.id ?? 'local');
+  const checkLimit = useUsageStore((s) => s.checkLimit);
+  const increment  = useUsageStore((s) => s.increment);
 
   const [scanState,       setScanState]       = useState<ScanState>('INTRO');
   const [scanMode,        setScanMode]        = useState<ScanMode>('wardrobe');
@@ -68,6 +61,19 @@ export function useScan(): UseScanReturn {
     setError(null);
 
     try {
+      // Always reload keys fresh from storage before scanning to avoid stale closure values
+      await useSettingsStore.getState().loadSettings();
+      const {
+        openaiKey, anthropicKey, removeBgKey,
+        supabaseUrl, supabaseAnonKey: supabaseAnon,
+      } = useSettingsStore.getState();
+      const supabaseReady = !!(supabaseUrl && supabaseAnon);
+
+      console.log('[useScan] keys —',
+        `openai: ${openaiKey ? openaiKey.slice(0, 8) + '…' : 'LEEG'}`,
+        `anthropic: ${anthropicKey ? anthropicKey.slice(0, 8) + '…' : 'LEEG'}`,
+      );
+
       // Check scan limit before starting
       checkLimit('scan');
 
@@ -155,7 +161,7 @@ export function useScan(): UseScanReturn {
       setError(msg);
       setScanState('INTRO');
     }
-  }, [scanMode, openaiKey, anthropicKey, removeBgKey, replicateKey, supabaseReady, addItem, userId, checkLimit, increment]);
+  }, [scanMode, addItem, userId, checkLimit, increment]);
 
   const reset = useCallback(() => {
     setScanState('INTRO');

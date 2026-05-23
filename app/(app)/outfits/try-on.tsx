@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,6 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useUsageStore, LimitReachedError } from '@/store/usageStore';
 import { generateFashnTryOn } from '@/services/fashnService';
 import { generateTryOn } from '@/services/tryOnService';
-import { useSettings } from '@/hooks/useSettings';
 
 const { height: SH } = Dimensions.get('window');
 const THUMB = 76;
@@ -437,12 +436,32 @@ export default function TryOnScreen() {
   const router      = useRouter();
   const items          = useWardrobeStore((s) => s.items);
   const modelPhotoUrl  = useAuthStore((s) => s.modelPhotoUrl);
-  const { isLoaded: isSettingsLoaded, openaiKey, fashnKey, replicateKey } = useSettings();
-  const checkLimit     = useUsageStore((s) => s.checkLimit);
-  const increment      = useUsageStore((s) => s.increment);
+  const checkLimit = useUsageStore((s) => s.checkLimit);
+  const increment  = useUsageStore((s) => s.increment);
+
+  const [keysReady,    setKeysReady]    = useState(false);
+  const [replicateKey, setReplicateKey] = useState('');
+  const [fashnKey,     setFashnKey]     = useState('');
+  const [openaiKey,    setOpenaiKey]    = useState('');
+
+  useEffect(() => {
+    const load = async () => {
+      const settings = useSettingsStore.getState();
+      await settings.loadSettings();
+      const fresh = useSettingsStore.getState();
+      console.log('[TryOn] replicateKey geladen:', fresh.replicateKey ? fresh.replicateKey.substring(0, 8) + '…' : 'LEEG');
+      console.log('[TryOn] fashnKey geladen:',     fresh.fashnKey     ? fresh.fashnKey.substring(0, 8)     + '…' : 'LEEG');
+      console.log('[TryOn] openaiKey geladen:',    fresh.openaiKey    ? fresh.openaiKey.substring(0, 8)    + '…' : 'LEEG');
+      setReplicateKey(fresh.replicateKey || '');
+      setFashnKey(fresh.fashnKey || '');
+      setOpenaiKey(fresh.openaiKey || '');
+      setKeysReady(true);
+    };
+    load();
+  }, []);
 
   // True once keys are loaded and no try-on API key is configured
-  const noTryOnKey = isSettingsLoaded && !replicateKey && !fashnKey && !openaiKey;
+  const noTryOnKey = keysReady && !replicateKey && !fashnKey && !openaiKey;
 
   const [selected,    setSelected]    = useState<Partial<Record<Cat, ClothingItem>>>({});
   const [isTryingOn,  setIsTryingOn]  = useState(false);
@@ -530,7 +549,7 @@ export default function TryOnScreen() {
       `replicate: ${latestReplicate ? latestReplicate.slice(0, 8) + '…' : '(empty)'}`,
       `fashn: ${latestFashn ? latestFashn.slice(0, 8) + '…' : '(empty)'}`,
       `openai: ${latestOpenai ? latestOpenai.slice(0, 8) + '…' : '(empty)'}`,
-      `settingsLoaded: ${isSettingsLoaded}`,
+      `keysReady: ${keysReady}`,
     );
 
     setIsTryingOn(true);
@@ -560,7 +579,7 @@ export default function TryOnScreen() {
     } finally {
       setIsTryingOn(false);
     }
-  }, [modelPhotoUrl, isSettingsLoaded, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
+  }, [modelPhotoUrl, keysReady, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;
@@ -643,18 +662,18 @@ export default function TryOnScreen() {
             {modelPhotoUrl && selectedCount > 0 && (
               <View style={s.tryOnBtnWrap}>
                 <TouchableOpacity
-                  style={[s.tryOnBtn, (isTryingOn || !isSettingsLoaded || noTryOnKey) && s.tryOnBtnDisabled]}
+                  style={[s.tryOnBtn, (isTryingOn || !keysReady || noTryOnKey) && s.tryOnBtnDisabled]}
                   onPress={handleTryOn}
                   activeOpacity={0.85}
-                  disabled={isTryingOn || !isSettingsLoaded || noTryOnKey}
+                  disabled={isTryingOn || !keysReady || noTryOnKey}
                 >
-                  {isTryingOn || !isSettingsLoaded ? (
+                  {isTryingOn || !keysReady ? (
                     <ActivityIndicator size="small" color={colors.white} />
                   ) : (
                     <Ionicons name="person" size={15} color={colors.white} />
                   )}
                   <Text style={s.tryOnText}>
-                    {isTryingOn ? 'Bezig...' : !isSettingsLoaded ? 'Laden…' : 'Pas op model'}
+                    {isTryingOn ? 'Bezig...' : !keysReady ? 'Laden…' : 'Pas op model'}
                   </Text>
                 </TouchableOpacity>
                 {noTryOnKey && (

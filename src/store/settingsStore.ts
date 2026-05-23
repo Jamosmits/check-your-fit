@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { invalidateSupabaseClient } from '@/services/supabase';
 
 const OPENAI_KEY        = 'settings_openai_key';
 const REMOVEBG_KEY      = 'settings_removebg_key';
-const REPLICATE_KEY     = 'settings_replicate_key';
+// replicateKey uses AsyncStorage (not SecureStore) — avoids SecureStore hydration race on Android
+const REPLICATE_AS_KEY  = 'settings_replicate_key_v2';
 const FASHN_KEY         = 'settings_fashn_key';
 const ANTHROPIC_KEY     = 'settings_anthropic_key';
 const SUPABASE_URL_KEY  = 'settings_supabase_url';
@@ -27,9 +29,10 @@ interface SettingsState {
   setSupabaseUrl:    (url: string) => Promise<void>;
   setSupabaseAnonKey:(key: string) => Promise<void>;
   loadKeys: () => Promise<void>;
+  loadSettings: () => Promise<void>; // alias for loadKeys
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   openaiKey:       '',
   removeBgKey:     '',
   replicateKey:    '',
@@ -50,7 +53,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   setReplicateKey: async (key) => {
-    await SecureStore.setItemAsync(REPLICATE_KEY, key);
+    await AsyncStorage.setItem(REPLICATE_AS_KEY, key);
     set({ replicateKey: key });
   },
 
@@ -77,15 +80,23 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   loadKeys: async () => {
-    const [openai, removebg, replicate, fashn, anthropic, sbUrl, sbAnon] = await Promise.all([
+    const [openai, removebg, fashn, anthropic, sbUrl, sbAnon] = await Promise.all([
       SecureStore.getItemAsync(OPENAI_KEY).catch(() => ''),
       SecureStore.getItemAsync(REMOVEBG_KEY).catch(() => ''),
-      SecureStore.getItemAsync(REPLICATE_KEY).catch(() => ''),
       SecureStore.getItemAsync(FASHN_KEY).catch(() => ''),
       SecureStore.getItemAsync(ANTHROPIC_KEY).catch(() => ''),
       SecureStore.getItemAsync(SUPABASE_URL_KEY).catch(() => ''),
       SecureStore.getItemAsync(SUPABASE_ANON_KEY).catch(() => ''),
     ]);
+    // Read replicateKey from AsyncStorage; fall back to old SecureStore slot for one-time migration
+    let replicate = await AsyncStorage.getItem(REPLICATE_AS_KEY).catch(() => null);
+    if (!replicate) {
+      const legacy = await SecureStore.getItemAsync('settings_replicate_key').catch(() => null);
+      if (legacy) {
+        replicate = legacy;
+        AsyncStorage.setItem(REPLICATE_AS_KEY, legacy).catch(() => {});
+      }
+    }
     const next = {
       openaiKey:       openai    ?? '',
       removeBgKey:     removebg  ?? '',
@@ -108,5 +119,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       `removebg: ${keyStatus(next.removeBgKey)}`,
       `supabase: ${next.supabaseUrl ? 'geconfigureerd' : 'LEEG'}`,
     );
+  },
+
+  // alias so callers can use either name
+  loadSettings: async () => {
+    await get().loadKeys();
   },
 }));
