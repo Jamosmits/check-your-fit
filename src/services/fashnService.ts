@@ -208,8 +208,20 @@ export async function generateFashnTryOn(
 ): Promise<string> {
   if (garments.length === 0) throw new Error('Geen kledingstukken geselecteerd');
 
-  // Load key fresh from AsyncStorage right before the API call
-  const replicateKey = await AsyncStorage.getItem('replicate_key').catch(() => null);
+  // Debug: dump every AsyncStorage key so we know exactly what name is used
+  const replicateKey =
+    await AsyncStorage.getItem('replicate_key').catch(() => null) ||
+    await AsyncStorage.getItem('replicateKey').catch(() => null) ||
+    await AsyncStorage.getItem('settings_replicate_key').catch(() => null);
+
+  console.log('[DEBUG alle keys in AsyncStorage]:');
+  const allKeys = await AsyncStorage.getAllKeys().catch(() => [] as readonly string[]);
+  console.log(allKeys);
+  for (const key of allKeys) {
+    const val = await AsyncStorage.getItem(key).catch(() => null);
+    console.log(key, '=', val ? val.substring(0, 12) : 'null');
+  }
+
   console.log('[Replicate key]:', replicateKey ? replicateKey.substring(0, 8) + '…' : 'LEEG');
 
   if (!replicateKey) throw new Error('Voeg Replicate API key toe in Instellingen');
