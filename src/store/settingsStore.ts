@@ -1,16 +1,21 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { invalidateSupabaseClient } from '@/services/supabase';
 
-const OPENAI_KEY        = 'settings_openai_key';
-const REMOVEBG_KEY      = 'settings_removebg_key';
-// replicateKey uses AsyncStorage (not SecureStore) — avoids SecureStore hydration race on Android
-const REPLICATE_AS_KEY  = 'replicate_key';
-const FASHN_KEY         = 'settings_fashn_key';
-const ANTHROPIC_KEY     = 'settings_anthropic_key';
-const SUPABASE_URL_KEY  = 'settings_supabase_url';
-const SUPABASE_ANON_KEY = 'settings_supabase_anon_key';
+// All keys stored in AsyncStorage — no SecureStore
+const K = {
+  openai:      'settings_openai_key',
+  removebg:    'settings_removebg_key',
+  replicate:   'replicate_key',
+  fashn:       'fashn_key',
+  anthropic:   'settings_anthropic_key',
+  supabaseUrl: 'settings_supabase_url',
+  supabaseAnon:'settings_supabase_anon_key',
+} as const;
+
+async function as(key: string): Promise<string> {
+  return (await AsyncStorage.getItem(key).catch(() => null)) ?? '';
+}
 
 interface SettingsState {
   openaiKey:        string;
@@ -29,7 +34,7 @@ interface SettingsState {
   setSupabaseUrl:    (url: string) => Promise<void>;
   setSupabaseAnonKey:(key: string) => Promise<void>;
   loadKeys: () => Promise<void>;
-  loadSettings: () => Promise<void>; // alias for loadKeys
+  loadSettings: () => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -43,76 +48,66 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isLoaded:        false,
 
   setOpenaiKey: async (key) => {
-    await SecureStore.setItemAsync(OPENAI_KEY, key);
+    await AsyncStorage.setItem(K.openai, key);
     set({ openaiKey: key });
   },
 
   setRemoveBgKey: async (key) => {
-    await SecureStore.setItemAsync(REMOVEBG_KEY, key);
+    await AsyncStorage.setItem(K.removebg, key);
     set({ removeBgKey: key });
   },
 
   setReplicateKey: async (key) => {
-    await AsyncStorage.setItem(REPLICATE_AS_KEY, key);
+    await AsyncStorage.setItem(K.replicate, key);
     set({ replicateKey: key });
   },
 
   setFashnKey: async (key) => {
-    await SecureStore.setItemAsync(FASHN_KEY, key);
+    await AsyncStorage.setItem(K.fashn, key);
     set({ fashnKey: key });
   },
 
   setAnthropicKey: async (key) => {
-    await SecureStore.setItemAsync(ANTHROPIC_KEY, key);
+    await AsyncStorage.setItem(K.anthropic, key);
     set({ anthropicKey: key });
   },
 
   setSupabaseUrl: async (url) => {
-    await SecureStore.setItemAsync(SUPABASE_URL_KEY, url);
+    await AsyncStorage.setItem(K.supabaseUrl, url);
     invalidateSupabaseClient();
     set({ supabaseUrl: url });
   },
 
   setSupabaseAnonKey: async (key) => {
-    await SecureStore.setItemAsync(SUPABASE_ANON_KEY, key);
+    await AsyncStorage.setItem(K.supabaseAnon, key);
     invalidateSupabaseClient();
     set({ supabaseAnonKey: key });
   },
 
   loadKeys: async () => {
-    const [openai, removebg, fashn, anthropic, sbUrl, sbAnon] = await Promise.all([
-      SecureStore.getItemAsync(OPENAI_KEY).catch(() => ''),
-      SecureStore.getItemAsync(REMOVEBG_KEY).catch(() => ''),
-      SecureStore.getItemAsync(FASHN_KEY).catch(() => ''),
-      SecureStore.getItemAsync(ANTHROPIC_KEY).catch(() => ''),
-      SecureStore.getItemAsync(SUPABASE_URL_KEY).catch(() => ''),
-      SecureStore.getItemAsync(SUPABASE_ANON_KEY).catch(() => ''),
+    const [openai, removebg, replicate, fashn, anthropic, sbUrl, sbAnon] = await Promise.all([
+      as(K.openai),
+      as(K.removebg),
+      as(K.replicate),
+      as(K.fashn),
+      as(K.anthropic),
+      as(K.supabaseUrl),
+      as(K.supabaseAnon),
     ]);
-    // Read replicateKey from AsyncStorage; migrate from old key names on first use
-    let replicate = await AsyncStorage.getItem(REPLICATE_AS_KEY).catch(() => null);
-    if (!replicate) {
-      // Try previous AsyncStorage key name
-      const prev = await AsyncStorage.getItem('settings_replicate_key_v2').catch(() => null);
-      // Try original SecureStore slot
-      const legacy = prev ?? (await SecureStore.getItemAsync('settings_replicate_key').catch(() => null));
-      if (legacy) {
-        replicate = legacy;
-        AsyncStorage.setItem(REPLICATE_AS_KEY, legacy).catch(() => {});
-      }
-    }
+
     const next = {
-      openaiKey:       openai    ?? '',
-      removeBgKey:     removebg  ?? '',
-      replicateKey:    replicate ?? '',
-      fashnKey:        fashn     ?? '',
-      anthropicKey:    anthropic ?? '',
-      supabaseUrl:     sbUrl     ?? '',
-      supabaseAnonKey: sbAnon    ?? '',
-      isLoaded: true,
+      openaiKey:       openai,
+      removeBgKey:     removebg,
+      replicateKey:    replicate,
+      fashnKey:        fashn,
+      anthropicKey:    anthropic,
+      supabaseUrl:     sbUrl,
+      supabaseAnonKey: sbAnon,
+      isLoaded:        true,
     };
     set(next);
 
-    function keyStatus(v: string | null) { return v ? v.slice(0, 4) + '…' : 'LEEG'; }
+    function keyStatus(v: string) { return v ? v.slice(0, 4) + '…' : 'LEEG'; }
     console.log(
       '[settings] keys geladen —',
       `openai: ${keyStatus(next.openaiKey)}`,
@@ -124,8 +119,5 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     );
   },
 
-  // alias so callers can use either name
-  loadSettings: async () => {
-    await get().loadKeys();
-  },
+  loadSettings: async () => { await get().loadKeys(); },
 }));

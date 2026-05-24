@@ -272,15 +272,18 @@ export async function generateFaceToModel(
 export async function generateFashnTryOn(
   modelPhotoUri: string,
   garments: { imageUri: string; category: string; description?: string }[],
-  fashnKey: string,
+  fashnKeyParam = '',
   replicateKeyParam = '',
 ): Promise<string> {
   if (garments.length === 0) throw new Error('No garments provided');
 
-  // Always load the Replicate key fresh from AsyncStorage — avoids stale closure values
-  const storedKey = await AsyncStorage.getItem('replicate_key').catch(() => null);
-  const replicateKey = storedKey || replicateKeyParam;
-  console.log('[Replicate] key:', replicateKey ? replicateKey.substring(0, 8) + '…' : 'LEEG');
+  // Always load keys fresh from AsyncStorage right before use
+  const replicateKey = (await AsyncStorage.getItem('replicate_key').catch(() => null)) || replicateKeyParam;
+  const fashnKey     = (await AsyncStorage.getItem('fashn_key').catch(() => null))     || fashnKeyParam;
+
+  console.log('[tryOn] replicateKey:', replicateKey ? replicateKey.substring(0, 8) + '…' : 'LEEG');
+  console.log('[tryOn] fashnKey:',     fashnKey     ? fashnKey.substring(0, 8)     + '…' : 'LEEG');
+
   if (!replicateKey && !fashnKey) throw new Error('Geen Replicate of Fashn.ai key beschikbaar');
 
   const ORDER: Record<string, number> = { dresses: 0, outerwear: 1, tops: 2, bottoms: 3, shoes: 4, accessories: 5 };
