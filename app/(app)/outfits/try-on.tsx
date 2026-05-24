@@ -24,7 +24,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useUsageStore, LimitReachedError } from '@/store/usageStore';
 import { generateFashnTryOn } from '@/services/fashnService';
-import { generateTryOn } from '@/services/tryOnService';
 
 const { height: SH } = Dimensions.get('window');
 const THUMB = 76;
@@ -510,22 +509,6 @@ export default function TryOnScreen() {
 
   const selectedCount = Object.keys(selected).length;
 
-  const buildOutfitDescription = useCallback(() => {
-    return Object.values(selected)
-      .map((item) => {
-        // Use the full GPT-4o description when available for maximum accuracy
-        if (item.description) return item.description;
-        // Fallback: build from metadata fields
-        return [
-          item.colorNames?.slice(0, 2).join(' and ') ?? item.color,
-          item.subcategory ?? item.category,
-          item.brand,
-          item.notes,
-        ].filter(Boolean).join(' ');
-      })
-      .join('. ');
-  }, [selected]);
-
   const handleTryOn = useCallback(async () => {
     if (!modelPhotoUrl || selectedCount === 0) return;
 
@@ -538,38 +521,17 @@ export default function TryOnScreen() {
       }
     }
 
-    // Always read fresh values from the store to avoid stale closure captures
-    const {
-      replicateKey: latestReplicate,
-      fashnKey:     latestFashn,
-      openaiKey:    latestOpenai,
-    } = useSettingsStore.getState();
-
-    console.log('[tryOn] keys —',
-      `replicate: ${latestReplicate ? latestReplicate.slice(0, 8) + '…' : '(empty)'}`,
-      `fashn: ${latestFashn ? latestFashn.slice(0, 8) + '…' : '(empty)'}`,
-      `openai: ${latestOpenai ? latestOpenai.slice(0, 8) + '…' : '(empty)'}`,
-      `keysReady: ${keysReady}`,
-    );
-
     setIsTryingOn(true);
     try {
-      let result: string;
-      if (latestFashn || latestReplicate) {
-        const garments = Object.values(selected)
-          .filter((item) => item.processedPhotoUrl ?? item.imageUrl)
-          .map((item) => ({
-            imageUri:    item.processedPhotoUrl ?? item.imageUrl,
-            category:    item.category,
-            description: item.description,
-          }));
-        result = await generateFashnTryOn(modelPhotoUrl, garments, latestFashn, latestReplicate);
-      } else if (latestOpenai) {
-        const description = buildOutfitDescription();
-        result = await generateTryOn(modelPhotoUrl, description, latestOpenai);
-      } else {
-        throw new Error('Geen API key beschikbaar. Stel een Replicate, Fashn.ai of OpenAI key in bij Instellingen.');
-      }
+      const garments = Object.values(selected)
+        .filter((item) => item.processedPhotoUrl ?? item.imageUrl)
+        .map((item) => ({
+          imageUri:    item.processedPhotoUrl ?? item.imageUrl,
+          category:    item.category,
+          description: item.description,
+        }));
+      // generateFashnTryOn loads replicateKey from AsyncStorage internally
+      const result = await generateFashnTryOn(modelPhotoUrl, garments);
       setTryOnResult(result);
       await increment('tryOn');
     } catch (e) {
@@ -579,7 +541,7 @@ export default function TryOnScreen() {
     } finally {
       setIsTryingOn(false);
     }
-  }, [modelPhotoUrl, keysReady, selectedCount, selected, buildOutfitDescription, checkLimit, increment]);
+  }, [modelPhotoUrl, selectedCount, selected, checkLimit, increment]);
 
   const handleShare = useCallback(async () => {
     if (!tryOnResult) return;

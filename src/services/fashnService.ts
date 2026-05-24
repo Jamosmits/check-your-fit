@@ -3,33 +3,27 @@ import {
   writeAsStringAsync,
   cacheDirectory,
 } from 'expo-file-system/legacy';
-import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FASHN_RUN    = 'https://api.fashn.ai/v1/run';
 const FASHN_STATUS = 'https://api.fashn.ai/v1/status';
 const REPLICATE_API = 'https://api.replicate.com/v1/predictions';
 
-const REPLICATE_POLL_MS = 2000;
-const REPLICATE_MAX_POLLS = 30; // 60 s max
+const REPLICATE_POLL_MS   = 2000;
+const REPLICATE_MAX_POLLS = 30;   // 60 s max
 
-const FASHN_POLL_INTERVAL = 3000;
-const FASHN_MAX_POLLS     = 40; // ~2 min
+const FASHN_POLL_MS   = 3000;
+const FASHN_MAX_POLLS = 40;       // ~2 min (face-to-model only)
 
-export type FashnCategory = 'tops' | 'bottoms' | 'full-body';
 type IdmCategory = 'upper_body' | 'lower_body' | 'dresses';
-
-function categoryFromItem(itemCategory: string): FashnCategory {
-  if (itemCategory === 'bottoms') return 'bottoms';
-  if (itemCategory === 'dresses') return 'full-body';
-  return 'tops'; // tops, outerwear, accessories
-}
 
 function idmCategoryFromItem(itemCategory: string): IdmCategory {
   if (itemCategory === 'bottoms') return 'lower_body';
   if (itemCategory === 'dresses') return 'dresses';
-  return 'upper_body'; // tops, outerwear
+  return 'upper_body';
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function toBase64(uri: string): Promise<string> {
   if (uri.startsWith('file://') || uri.startsWith('/')) {
@@ -38,7 +32,6 @@ async function toBase64(uri: string): Promise<string> {
   if (uri.startsWith('data:')) {
     return uri.split(',')[1] ?? '';
   }
-  // http/https
   const res = await fetch(uri);
   if (!res.ok) throw new Error(`Image download failed: ${res.status}`);
   const buf   = await res.arrayBuffer();
@@ -61,7 +54,7 @@ async function downloadToFile(url: string, prefix: string): Promise<string> {
   return path;
 }
 
-// ─── IDM-VTON via Replicate (primary) ────────────────────────────────────────
+// ─── Replicate IDM-VTON ───────────────────────────────────────────────────────
 
 async function pollReplicate(id: string, replicateKey: string): Promise<string> {
   for (let i = 0; i < REPLICATE_MAX_POLLS; i++) {
@@ -74,17 +67,17 @@ async function pollReplicate(id: string, replicateKey: string): Promise<string> 
     console.log(`[Replicate] poll ${i + 1}/${REPLICATE_MAX_POLLS} — status: ${pred.status}`);
     if (pred.status === 'succeeded') {
       const out = pred.output;
-      // IDM-VTON returns [masked_image, result_image] — index 1 is the try-on result
+      // IDM-VTON output: [masked_image, result_image] — index 1 is the try-on result
       if (Array.isArray(out) && out.length > 1) return out[1] as string;
       if (Array.isArray(out) && out.length === 1) return out[0] as string;
       if (typeof out === 'string') return out;
-      throw new Error('IDM-VTON: no output in succeeded response');
+      throw new Error('IDM-VTON: geen output in succeeded response');
     }
     if (pred.status === 'failed' || pred.status === 'canceled') {
       throw new Error(`IDM-VTON ${pred.status}: ${pred.error ?? ''}`);
     }
   }
-  throw new Error('IDM-VTON prediction timed out after 60s');
+  throw new Error('IDM-VTON prediction timed out na 60s');
 }
 
 async function applyGarmentIdmVton(
@@ -102,7 +95,11 @@ async function applyGarmentIdmVton(
 
   const res = await fetch(REPLICATE_API, {
     method:  'POST',
-    headers: { Authorization: `Token ${replicateKey}`, 'Content-Type': 'application/json', Prefer: 'wait=5' },
+    headers: {
+      Authorization:  `Token ${replicateKey}`,
+      'Content-Type': 'application/json',
+      Prefer:         'wait=5',
+    },
     body: JSON.stringify({
       model: 'cuuupid/idm-vton',
       input: {
@@ -118,12 +115,11 @@ async function applyGarmentIdmVton(
 
   if (!res.ok) throw new Error(`IDM-VTON ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const pred = (await res.json()) as { id: string; status: string; output?: unknown };
-  console.log('[Replicate] IDM-VTON prediction ID:', pred.id, '| initial status:', pred.status);
+  console.log('[Replicate] prediction ID:', pred.id, '| status:', pred.status);
 
   let outputUrl: string;
   if (pred.status === 'succeeded') {
     const out = pred.output;
-    // output[1] is the result image; output[0] is the masked image
     if (Array.isArray(out) && out.length > 1) outputUrl = out[1] as string;
     else if (Array.isArray(out) && out.length === 1) outputUrl = out[0] as string;
     else outputUrl = out as string;
@@ -131,92 +127,33 @@ async function applyGarmentIdmVton(
     outputUrl = await pollReplicate(pred.id, replicateKey);
   }
 
-  console.log('[Replicate] IDM-VTON SUCCESS — output:', outputUrl.slice(0, 60));
+  console.log('[Replicate] IDM-VTON SUCCESS:', outputUrl.slice(0, 60));
   return downloadToFile(outputUrl, 'idmvton');
 }
 
-// ─── Fashn.ai (fallback) ──────────────────────────────────────────────────────
+// ─── Fashn.ai face-to-model (profile photo generation) ───────────────────────
 
 async function pollFashn(predictionId: string, apiKey: string): Promise<string> {
   for (let i = 0; i < FASHN_MAX_POLLS; i++) {
-    await new Promise<void>((r) => setTimeout(r, FASHN_POLL_INTERVAL));
+    await new Promise<void>((r) => setTimeout(r, FASHN_POLL_MS));
     const res = await fetch(`${FASHN_STATUS}/${predictionId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
     if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
-    const data = (await res.json()) as {
-      status: string;
-      output?: string[] | string;
-      error?: string;
-    };
-    console.log('[fashn] poll status:', data.status);
+    const data = (await res.json()) as { status: string; output?: string[] | string; error?: string };
+    console.log('[Fashn] poll status:', data.status);
     if (data.status === 'completed') {
       const out = data.output;
       const url = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : null;
-      if (!url) throw new Error('Fashn.ai: no output URL in completed response');
+      if (!url) throw new Error('Fashn.ai: geen output URL');
       return url;
     }
     if (data.status === 'failed' || data.status === 'canceled') {
-      throw new Error(`Fashn.ai prediction ${data.status}: ${data.error ?? ''}`);
+      throw new Error(`Fashn.ai ${data.status}: ${data.error ?? ''}`);
     }
   }
   throw new Error('Fashn.ai prediction timed out');
 }
-
-async function applyGarmentFashn(
-  modelImageUri: string,
-  garmentImageUri: string,
-  category: FashnCategory,
-  apiKey: string,
-): Promise<string> {
-  const [modelB64, garmentB64] = await Promise.all([
-    toBase64(modelImageUri),
-    toBase64(garmentImageUri),
-  ]);
-
-  const body = {
-    model_image:   `data:image/jpeg;base64,${modelB64}`,
-    garment_image: `data:image/jpeg;base64,${garmentB64}`,
-    category,
-  };
-
-  const res = await fetch(FASHN_RUN, {
-    method:  'POST',
-    headers: {
-      Authorization:  `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text().catch(() => '<unreadable>');
-    throw new Error(`Fashn.ai run ${res.status}: ${err.slice(0, 300)}`);
-  }
-
-  const data = (await res.json()) as { id?: string; output?: string[] | string; status?: string; error?: string };
-
-  if (data.status === 'completed') {
-    const out = data.output;
-    const url = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : null;
-    if (url) return downloadToFile(url, 'fashn');
-  }
-
-  if (data.status === 'failed' || data.status === 'canceled') {
-    throw new Error(`Fashn.ai failed immediately: ${data.error ?? ''}`);
-  }
-
-  if (!data.id) {
-    const dump = JSON.stringify(data).slice(0, 300);
-    Alert.alert('Fashn.ai Error', `No prediction ID in response:\n${dump}`);
-    throw new Error(`No prediction ID from Fashn.ai: ${dump}`);
-  }
-
-  const outputUrl = await pollFashn(data.id, apiKey);
-  return downloadToFile(outputUrl, 'fashn');
-}
-
-// ─── Face-to-model ────────────────────────────────────────────────────────────
 
 export async function generateFaceToModel(
   faceImageUri: string,
@@ -225,9 +162,7 @@ export async function generateFaceToModel(
 ): Promise<string> {
   const faceB64 = await toBase64(faceImageUri);
 
-  const inputs: Record<string, unknown> = {
-    face_image: `data:image/jpeg;base64,${faceB64}`,
-  };
+  const inputs: Record<string, unknown> = { face_image: `data:image/jpeg;base64,${faceB64}` };
   if (measurements.height) inputs.height = measurements.height;
   if (measurements.weight) inputs.weight = measurements.weight;
   if (measurements.size)   inputs.size   = measurements.size;
@@ -251,83 +186,56 @@ export async function generateFaceToModel(
     const url = Array.isArray(out) ? out[0] : typeof out === 'string' ? out : null;
     if (url) return downloadToFile(url, 'face2model');
   }
-
   if (data.status === 'failed' || data.status === 'canceled') {
-    throw new Error(`Fashn.ai face-to-model failed: ${data.error ?? ''}`);
+    throw new Error(`Fashn.ai face-to-model ${data.status}: ${data.error ?? ''}`);
   }
-
-  if (!data.id) throw new Error('No prediction ID from Fashn.ai face-to-model');
+  if (!data.id) throw new Error('Geen prediction ID van Fashn.ai face-to-model');
 
   const outputUrl = await pollFashn(data.id, fashnKey);
   return downloadToFile(outputUrl, 'face2model');
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Virtual try-on (Replicate IDM-VTON only) ─────────────────────────────────
 
 /**
- * Applies all selected outfit items onto the model photo sequentially.
- * Priority: IDM-VTON (Replicate) → Fashn.ai fallback.
- * Dress (full-body) takes priority over separate top+bottom.
+ * Applies garments onto the model photo using Replicate IDM-VTON.
+ * Loads the Replicate API key directly from AsyncStorage immediately before
+ * the API call — no stale closure / no parameter passing required.
  */
 export async function generateFashnTryOn(
   modelPhotoUri: string,
   garments: { imageUri: string; category: string; description?: string }[],
-  fashnKeyParam = '',
-  replicateKeyParam = '',
 ): Promise<string> {
-  if (garments.length === 0) throw new Error('No garments provided');
+  if (garments.length === 0) throw new Error('Geen kledingstukken geselecteerd');
 
-  // Always load keys fresh from AsyncStorage right before use
-  const replicateKey = (await AsyncStorage.getItem('replicate_key').catch(() => null)) || replicateKeyParam;
-  const fashnKey     = (await AsyncStorage.getItem('fashn_key').catch(() => null))     || fashnKeyParam;
+  // Load key fresh from AsyncStorage right before the API call
+  const replicateKey = await AsyncStorage.getItem('replicate_key').catch(() => null);
+  console.log('[Replicate key]:', replicateKey ? replicateKey.substring(0, 8) + '…' : 'LEEG');
 
-  console.log('[tryOn] replicateKey:', replicateKey ? replicateKey.substring(0, 8) + '…' : 'LEEG');
-  console.log('[tryOn] fashnKey:',     fashnKey     ? fashnKey.substring(0, 8)     + '…' : 'LEEG');
-
-  if (!replicateKey && !fashnKey) throw new Error('Geen Replicate of Fashn.ai key beschikbaar');
+  if (!replicateKey) throw new Error('Voeg Replicate API key toe in Instellingen');
 
   const ORDER: Record<string, number> = { dresses: 0, outerwear: 1, tops: 2, bottoms: 3, shoes: 4, accessories: 5 };
   const sorted = [...garments].sort((a, b) => (ORDER[a.category] ?? 99) - (ORDER[b.category] ?? 99));
 
   const toProcess = sorted.filter((g) => ['tops', 'bottoms', 'outerwear', 'dresses'].includes(g.category));
   if (toProcess.length === 0) {
-    throw new Error(
-      'Virtual try-on werkt alleen voor kleding zoals tops, broeken en jurken. Schoenen en accessoires worden nog niet ondersteund.',
-    );
+    throw new Error('Virtual try-on werkt alleen voor kleding (tops, broeken, jurken). Schoenen en accessoires worden niet ondersteund.');
   }
 
   const hasDress = toProcess.some((g) => g.category === 'dresses');
-  const items    = hasDress ? toProcess.filter((g) => g.category === 'dresses').slice(0, 1) : toProcess.slice(0, 2);
+  const items    = hasDress
+    ? toProcess.filter((g) => g.category === 'dresses').slice(0, 1)
+    : toProcess.slice(0, 2);
 
   let currentModelUri = modelPhotoUri;
   for (const garment of items) {
-    if (replicateKey) {
-      try {
-        console.log('[tryOn] IDM-VTON aanroep voor categorie:', garment.category);
-        currentModelUri = await applyGarmentIdmVton(
-          currentModelUri,
-          garment.imageUri,
-          garment.description ?? garment.category,
-          garment.category,
-          replicateKey,
-        );
-        continue;
-      } catch (e) {
-        console.warn('[tryOn] IDM-VTON mislukt, terugval op Fashn.ai:', e);
-      }
-    }
-
-    if (fashnKey) {
-      console.log('[tryOn] Fashn.ai aanroep voor categorie:', garment.category);
-      currentModelUri = await applyGarmentFashn(
-        currentModelUri,
-        garment.imageUri,
-        categoryFromItem(garment.category),
-        fashnKey,
-      );
-    } else {
-      throw new Error('Geen try-on API key beschikbaar (Replicate of Fashn.ai)');
-    }
+    currentModelUri = await applyGarmentIdmVton(
+      currentModelUri,
+      garment.imageUri,
+      garment.description ?? garment.category,
+      garment.category,
+      replicateKey,
+    );
   }
 
   return currentModelUri;
