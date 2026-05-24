@@ -4,20 +4,31 @@ import {
   cacheDirectory,
 } from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FASHN_RUN    = 'https://api.fashn.ai/v1/run';
 const FASHN_STATUS = 'https://api.fashn.ai/v1/status';
 const REPLICATE_API = 'https://api.replicate.com/v1/predictions';
 
-const POLL_INTERVAL = 3000;
-const MAX_POLLS     = 40; // ~2 min
+const REPLICATE_POLL_MS = 2000;
+const REPLICATE_MAX_POLLS = 30; // 60 s max
+
+const FASHN_POLL_INTERVAL = 3000;
+const FASHN_MAX_POLLS     = 40; // ~2 min
 
 export type FashnCategory = 'tops' | 'bottoms' | 'full-body';
+type IdmCategory = 'upper_body' | 'lower_body' | 'dresses';
 
 function categoryFromItem(itemCategory: string): FashnCategory {
   if (itemCategory === 'bottoms') return 'bottoms';
   if (itemCategory === 'dresses') return 'full-body';
   return 'tops'; // tops, outerwear, accessories
+}
+
+function idmCategoryFromItem(itemCategory: string): IdmCategory {
+  if (itemCategory === 'bottoms') return 'lower_body';
+  if (itemCategory === 'dresses') return 'dresses';
+  return 'upper_body'; // tops, outerwear
 }
 
 async function toBase64(uri: string): Promise<string> {
@@ -53,16 +64,19 @@ async function downloadToFile(url: string, prefix: string): Promise<string> {
 // ─── IDM-VTON via Replicate (primary) ────────────────────────────────────────
 
 async function pollReplicate(id: string, replicateKey: string): Promise<string> {
-  for (let i = 0; i < MAX_POLLS; i++) {
-    await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL));
+  for (let i = 0; i < REPLICATE_MAX_POLLS; i++) {
+    await new Promise<void>((r) => setTimeout(r, REPLICATE_POLL_MS));
     const res = await fetch(`${REPLICATE_API}/${id}`, {
       headers: { Authorization: `Token ${replicateKey}` },
     });
     if (!res.ok) throw new Error(`Replicate poll ${res.status}`);
     const pred = (await res.json()) as { status: string; output?: unknown; error?: string };
+    console.log(`[Replicate] poll ${i + 1}/${REPLICATE_MAX_POLLS} — status: ${pred.status}`);
     if (pred.status === 'succeeded') {
       const out = pred.output;
-      if (Array.isArray(out) && out.length > 0) return out[0] as string;
+      // IDM-VTON returns [masked_image, result_image] — index 1 is the try-on result
+      if (Array.isArray(out) && out.length > 1) return out[1] as string;
+      if (Array.isArray(out) && out.length === 1) return out[0] as string;
       if (typeof out === 'string') return out;
       throw new Error('IDM-VTON: no output in succeeded response');
     }
@@ -70,15 +84,17 @@ async function pollReplicate(id: string, replicateKey: string): Promise<string> 
       throw new Error(`IDM-VTON ${pred.status}: ${pred.error ?? ''}`);
     }
   }
-  throw new Error('IDM-VTON prediction timed out');
+  throw new Error('IDM-VTON prediction timed out after 60s');
 }
 
 async function applyGarmentIdmVton(
   modelImageUri: string,
   garmentImageUri: string,
   garmentDescription: string,
+  garmentCategory: string,
   replicateKey: string,
 ): Promise<string> {
+  console.log('[Replicate] IDM-VTON start — category:', garmentCategory);
   const [modelB64, garmentB64] = await Promise.all([
     toBase64(modelImageUri),
     toBase64(garmentImageUri),
@@ -93,25 +109,37 @@ async function applyGarmentIdmVton(
         human_img:   `data:image/jpeg;base64,${modelB64}`,
         garm_img:    `data:image/jpeg;base64,${garmentB64}`,
         garment_des: garmentDescription || 'clothing item',
+        category:    idmCategoryFromItem(garmentCategory),
+        crop:        false,
+        steps:       20,
       },
     }),
   });
 
   if (!res.ok) throw new Error(`IDM-VTON ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const pred = (await res.json()) as { id: string; status: string; output?: unknown };
+  console.log('[Replicate] IDM-VTON prediction ID:', pred.id, '| initial status:', pred.status);
 
-  const outputUrl = pred.status === 'succeeded'
-    ? (Array.isArray(pred.output) ? pred.output[0] as string : pred.output as string)
-    : await pollReplicate(pred.id, replicateKey);
+  let outputUrl: string;
+  if (pred.status === 'succeeded') {
+    const out = pred.output;
+    // output[1] is the result image; output[0] is the masked image
+    if (Array.isArray(out) && out.length > 1) outputUrl = out[1] as string;
+    else if (Array.isArray(out) && out.length === 1) outputUrl = out[0] as string;
+    else outputUrl = out as string;
+  } else {
+    outputUrl = await pollReplicate(pred.id, replicateKey);
+  }
 
+  console.log('[Replicate] IDM-VTON SUCCESS — output:', outputUrl.slice(0, 60));
   return downloadToFile(outputUrl, 'idmvton');
 }
 
 // ─── Fashn.ai (fallback) ──────────────────────────────────────────────────────
 
 async function pollFashn(predictionId: string, apiKey: string): Promise<string> {
-  for (let i = 0; i < MAX_POLLS; i++) {
-    await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL));
+  for (let i = 0; i < FASHN_MAX_POLLS; i++) {
+    await new Promise<void>((r) => setTimeout(r, FASHN_POLL_INTERVAL));
     const res = await fetch(`${FASHN_STATUS}/${predictionId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -245,9 +273,15 @@ export async function generateFashnTryOn(
   modelPhotoUri: string,
   garments: { imageUri: string; category: string; description?: string }[],
   fashnKey: string,
-  replicateKey = '',
+  replicateKeyParam = '',
 ): Promise<string> {
   if (garments.length === 0) throw new Error('No garments provided');
+
+  // Always load the Replicate key fresh from AsyncStorage — avoids stale closure values
+  const storedKey = await AsyncStorage.getItem('replicate_key').catch(() => null);
+  const replicateKey = storedKey || replicateKeyParam;
+  console.log('[Replicate] key:', replicateKey ? replicateKey.substring(0, 8) + '…' : 'LEEG');
+  if (!replicateKey && !fashnKey) throw new Error('Geen Replicate of Fashn.ai key beschikbaar');
 
   const ORDER: Record<string, number> = { dresses: 0, outerwear: 1, tops: 2, bottoms: 3, shoes: 4, accessories: 5 };
   const sorted = [...garments].sort((a, b) => (ORDER[a.category] ?? 99) - (ORDER[b.category] ?? 99));
@@ -266,21 +300,22 @@ export async function generateFashnTryOn(
   for (const garment of items) {
     if (replicateKey) {
       try {
-        console.log('[tryOn] Trying IDM-VTON for category:', garment.category);
+        console.log('[tryOn] IDM-VTON aanroep voor categorie:', garment.category);
         currentModelUri = await applyGarmentIdmVton(
           currentModelUri,
           garment.imageUri,
           garment.description ?? garment.category,
+          garment.category,
           replicateKey,
         );
         continue;
       } catch (e) {
-        console.warn('[tryOn] IDM-VTON failed, falling back to Fashn.ai:', e);
+        console.warn('[tryOn] IDM-VTON mislukt, terugval op Fashn.ai:', e);
       }
     }
 
     if (fashnKey) {
-      console.log('[tryOn] Using Fashn.ai for category:', garment.category);
+      console.log('[tryOn] Fashn.ai aanroep voor categorie:', garment.category);
       currentModelUri = await applyGarmentFashn(
         currentModelUri,
         garment.imageUri,

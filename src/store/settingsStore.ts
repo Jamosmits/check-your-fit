@@ -6,7 +6,7 @@ import { invalidateSupabaseClient } from '@/services/supabase';
 const OPENAI_KEY        = 'settings_openai_key';
 const REMOVEBG_KEY      = 'settings_removebg_key';
 // replicateKey uses AsyncStorage (not SecureStore) — avoids SecureStore hydration race on Android
-const REPLICATE_AS_KEY  = 'settings_replicate_key_v2';
+const REPLICATE_AS_KEY  = 'replicate_key';
 const FASHN_KEY         = 'settings_fashn_key';
 const ANTHROPIC_KEY     = 'settings_anthropic_key';
 const SUPABASE_URL_KEY  = 'settings_supabase_url';
@@ -88,10 +88,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       SecureStore.getItemAsync(SUPABASE_URL_KEY).catch(() => ''),
       SecureStore.getItemAsync(SUPABASE_ANON_KEY).catch(() => ''),
     ]);
-    // Read replicateKey from AsyncStorage; fall back to old SecureStore slot for one-time migration
+    // Read replicateKey from AsyncStorage; migrate from old key names on first use
     let replicate = await AsyncStorage.getItem(REPLICATE_AS_KEY).catch(() => null);
     if (!replicate) {
-      const legacy = await SecureStore.getItemAsync('settings_replicate_key').catch(() => null);
+      // Try previous AsyncStorage key name
+      const prev = await AsyncStorage.getItem('settings_replicate_key_v2').catch(() => null);
+      // Try original SecureStore slot
+      const legacy = prev ?? (await SecureStore.getItemAsync('settings_replicate_key').catch(() => null));
       if (legacy) {
         replicate = legacy;
         AsyncStorage.setItem(REPLICATE_AS_KEY, legacy).catch(() => {});
